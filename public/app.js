@@ -41,6 +41,13 @@ searchInput.addEventListener("input", (event) => {
 loadProducts();
 renderCart();
 
+// Check for pending toast from checkout
+const pendingToast = sessionStorage.getItem("pendingToast");
+if (pendingToast) {
+  showNotification(pendingToast);
+  sessionStorage.removeItem("pendingToast");
+}
+
 async function loadProducts() {
   productGrid.innerHTML = "<p>Memuat produk...</p>";
 
@@ -106,6 +113,7 @@ function renderProducts() {
     button.textContent = selectedVariant.stock === 0 ? "Habis" : "Tambah";
     button.addEventListener("click", () => {
       const chosenVariant = findSelectedVariant(product, variantSelect.value);
+      flyToCart(button);
       addToCart(product, chosenVariant);
     });
     productGrid.appendChild(card);
@@ -133,6 +141,7 @@ function addToCart(product, variant) {
 
   saveCart();
   renderCart();
+  showNotification(`${product.name} (${variant.label}) ditambahkan ke keranjang.`);
 }
 
 function renderCart() {
@@ -160,6 +169,7 @@ function renderCart() {
       cart = cart.filter((cartItem) => !(cartItem.id === item.id && cartItem.variantId === item.variantId));
       saveCart();
       renderCart();
+      showNotification(`${item.name} dihapus dari keranjang.`);
     });
     cartItemsContainer.appendChild(row);
   });
@@ -255,4 +265,47 @@ function formatVariantLabel(label) {
     return "Reguler";
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function showNotification(message, duration = 2000) {
+  const notification = document.createElement("div");
+  notification.className = "toast-notification";
+  notification.innerHTML = `
+    <div class="toast-content">${message}</div>
+    <div class="toast-progress" style="animation-duration: ${duration}ms"></div>
+  `;
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.classList.add("fade-out");
+    setTimeout(() => {
+      notification.remove();
+    }, 500);
+  }, duration);
+}
+
+function flyToCart(buttonElement) {
+  const cartButton = document.getElementById("open-cart-button");
+  if (!cartButton) return;
+
+  const btnRect = buttonElement.getBoundingClientRect();
+  const cartRect = cartButton.getBoundingClientRect();
+
+  const flyer = document.createElement("div");
+  flyer.className = "cart-flyer";
+  flyer.style.left = `${btnRect.left + btnRect.width / 2}px`;
+  flyer.style.top = `${btnRect.top + btnRect.height / 2}px`;
+  document.body.appendChild(flyer);
+
+  // Trigger reflow
+  flyer.offsetWidth;
+
+  flyer.style.transform = `translate(${cartRect.left - btnRect.left}px, ${cartRect.top - btnRect.top}px) scale(0.5)`;
+  flyer.style.opacity = "0";
+
+  setTimeout(() => {
+    flyer.remove();
+    cartButton.classList.add("bounce");
+    setTimeout(() => cartButton.classList.remove("bounce"), 300);
+  }, 600);
 }

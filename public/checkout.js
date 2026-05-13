@@ -83,12 +83,9 @@ checkoutForm.addEventListener("submit", async (event) => {
     cart = [];
     checkoutForm.reset();
     syncPaymentMethodFields();
-    checkoutMessage.textContent = `Pesanan berhasil dibuat. ID: ${result.id}`;
     renderCheckout();
-
-    if (selectedPaymentMethod === "WhatsApp Penjual") {
-      window.location.href = "/";
-    }
+    sessionStorage.setItem("pendingToast", `Pesanan berhasil dibuat. ID: ${result.id}`);
+    window.location.href = "/";
   } catch (error) {
     if (pendingWhatsAppWindow) {
       pendingWhatsAppWindow.close();
@@ -218,4 +215,24 @@ function formatCurrency(value) {
     currency: "IDR",
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function showNotification(message, duration = 3000, redirectUrl = null) {
+  const notification = document.createElement("div");
+  notification.className = "toast-notification";
+  notification.innerHTML = `
+    <div class="toast-content">${message}</div>
+    <div class="toast-progress" style="animation-duration: ${duration}ms"></div>
+  `;
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.classList.add("fade-out");
+    setTimeout(() => {
+      notification.remove();
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+      }
+    }, 500);
+  }, duration);
 }

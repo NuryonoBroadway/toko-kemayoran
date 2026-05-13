@@ -497,20 +497,53 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
     `;
 
     if (!isCompleteSection && showPaymentButton) {
-      card.querySelector(".order-payment-button").addEventListener("click", async () => {
-        await updatePaymentStatus(order.id, nextPaymentStatus);
+      const btn = card.querySelector(".order-payment-button");
+      btn.addEventListener("click", async () => {
+        const originalText = btn.textContent;
+        btn.innerHTML = `<span class="spinner"></span> Loading...`;
+        btn.disabled = true;
+        try {
+          await updatePaymentStatus(order.id, nextPaymentStatus);
+          showNotification("Status pembayaran berhasil diperbarui.");
+        } catch (error) {
+          showNotification(error.message || "Gagal memperbarui status.");
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
       });
     }
 
     if (!isCompleteSection && showDeniedButton) {
-      card.querySelector(".order-deny-button").addEventListener("click", async () => {
-        await updatePaymentStatus(order.id, "Ditolak");
+      const btn = card.querySelector(".order-deny-button");
+      btn.addEventListener("click", async () => {
+        const originalText = btn.textContent;
+        btn.innerHTML = `<span class="spinner"></span> Loading...`;
+        btn.disabled = true;
+        try {
+          await updatePaymentStatus(order.id, "Ditolak");
+          showNotification("Pembayaran ditolak.");
+        } catch (error) {
+          showNotification(error.message || "Gagal menolak pembayaran.");
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
       });
     }
 
     if (!isCompleteSection) {
-      card.querySelector(".order-status-button").addEventListener("click", async () => {
-        await updateOrderStatus(order.id, nextStatus);
+      const btn = card.querySelector(".order-status-button");
+      btn.addEventListener("click", async () => {
+        const originalText = btn.textContent;
+        btn.innerHTML = `<span class="spinner"></span> Loading...`;
+        btn.disabled = true;
+        try {
+          await updateOrderStatus(order.id, nextStatus);
+          showNotification(`Order berhasil diubah ke ${nextStatus}.`);
+        } catch (error) {
+          showNotification(error.message || "Gagal memperbarui status order.");
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
       });
     }
 
@@ -626,4 +659,21 @@ function createPlaceholderImage() {
 
 function slugify(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+function showNotification(message, duration = 2000) {
+  const notification = document.createElement("div");
+  notification.className = "toast-notification";
+  notification.innerHTML = `
+    <div class="toast-content">${message}</div>
+    <div class="toast-progress" style="animation-duration: ${duration}ms"></div>
+  `;
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.classList.add("fade-out");
+    setTimeout(() => {
+      notification.remove();
+    }, 500);
+  }, duration);
 }
