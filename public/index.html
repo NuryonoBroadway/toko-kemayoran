@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Toko Kemayoran</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Toko Online</p>
+      <h1>Toko Kemayoran</h1>
+    </div>
+    <div class="header-actions">
+      <button class="cart-button" id="open-cart-button" type="button">
+        Keranjang <span id="cart-count">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="catalog-controls">
+      <input id="search-input" class="search-input" type="search" placeholder="Cari produk..." />
+    </section>
+
+    <section class="catalog">
+      <div class="section-heading">
+        <h3>Daftar Produk</h3>
+        <p id="product-summary" class="muted"></p>
+      </div>
+      <div id="product-grid" class="product-grid"></div>
+    </section>
+  </main>
+
+  <aside id="cart-drawer" class="cart-drawer hidden">
+    <div class="cart-header">
+      <h3>Keranjang</h3>
+      <button id="close-cart-button" class="icon-button" type="button">
+        Tutup
+      </button>
+    </div>
+    <div id="cart-items" class="cart-items"></div>
+    <div class="cart-footer">
+      <div class="total-row">
+        <span>Total</span>
+        <strong id="cart-total">Rp0</strong>
+      </div>
+      <a id="checkout-button" class="primary-button checkout-link" href="/checkout.html">
+        Lanjut ke Checkout
+      </a>
+    </div>
+  </aside>
+
+  <template id="product-card-template">
+    <article class="product-card">
+      <img class="product-image" alt="" />
+      <div class="product-content">
+        <div class="product-meta">
+          <span class="category-badge"></span>
+          <span class="stock-badge"></span>
+        </div>
+        <h4></h4>
+        <p class="description"></p>
+        <div class="price-row">
+          <strong class="price"></strong>
+          <button class="primary-button add-to-cart-button" type="button">
+            Tambah
+          </button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" fill="none">
+  <rect width="1200" height="900" fill="#F4E8D4"/>
+  <rect x="76" y="76" width="1048" height="748" rx="40" fill="#FFF9F0"/>
+  <circle cx="896" cy="252" r="154" fill="#E7D4B7"/>
+  <circle cx="930" cy="224" r="84" fill="#F1E5D2"/>
+  <path d="M414 278C414 245.967 439.967 220 472 220H650C682.033 220 708 245.967 708 278V513C708 570.99 660.99 618 603 618H519C461.01 618 414 570.99 414 513V278Z" fill="#1D6B4D"/>
+  <path d="M691 303H773C829.333 303 875 348.667 875 405C875 461.333 829.333 507 773 507H736" stroke="#1D6B4D" stroke-width="36" stroke-linecap="round"/>
+  <path d="M496 674C496 646.386 518.386 624 546 624H686C713.614 624 736 646.386 736 674V690H496V674Z" fill="#D9BC93"/>
+  <path d="M504 357C504 357 532 323 562 357C592 391 620 357 620 357" stroke="#FFF4E3" stroke-width="24" stroke-linecap="round"/>
+  <path d="M558 183C558 183 520 138 558 98" stroke="#AE8058" stroke-width="18" stroke-linecap="round"/>
+  <path d="M632 183C632 183 594 138 632 98" stroke="#AE8058" stroke-width="18" stroke-linecap="round"/>
+  <text x="120" y="768" fill="#2E2A23" font-family="Arial, sans-serif" font-size="72" font-weight="700">Kopi Kemayoran</text>
+  <text x="120" y="825" fill="#6B655D" font-family="Arial, sans-serif" font-size="34">House blend dengan karakter cokelat dan rempah halus</text>
+</svg>

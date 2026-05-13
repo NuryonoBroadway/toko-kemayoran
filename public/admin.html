@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Toko Kemayoran</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Dashboard Admin</p>
+        <h1>Kelola Produk</h1>
+      </div>
+      <a class="secondary-button" href="/">Kembali ke toko</a>
+    </header>
+
+    <main class="admin-layout">
+      <section class="panel admin-sidebar">
+        <div class="section-heading">
+          <h2>Akses Admin</h2>
+          <p class="muted">Masukkan token admin untuk mengelola produk dan order.</p>
+        </div>
+        <div class="form-grid">
+          <label class="full-width">
+            Token Admin
+            <input id="admin-token" type="password" placeholder="Masukkan token admin" required />
+          </label>
+          <div class="full-width auth-row">
+            <p id="admin-auth-message" class="muted">Masukkan token admin untuk mengaktifkan aksi produk dan order.</p>
+            <button id="verify-admin-token" class="secondary-button" type="button">Verifikasi Token</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-content">
+        <section class="panel">
+          <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+            <button class="tab-button active" type="button" data-tab="products">Product</button>
+            <button class="tab-button" type="button" data-tab="ongoing">Ongoing Order</button>
+            <button class="tab-button" type="button" data-tab="complete">Complete Order</button>
+            <button class="tab-button" type="button" data-tab="denied">Denied Order</button>
+          </div>
+        </section>
+
+        <section class="panel admin-tab-panel" data-panel="products">
+          <div class="section-heading">
+            <div>
+              <h2>Product</h2>
+              <p class="muted">Kelola katalog produk aktif dengan layout yang lebih rapi.</p>
+            </div>
+            <button id="open-product-modal" class="primary-button" type="button" disabled>Produk Baru</button>
+          </div>
+          <div class="product-panel-body">
+            <div id="admin-product-list" class="admin-product-list"></div>
+          </div>
+        </section>
+
+        <section class="panel admin-tab-panel hidden" data-panel="ongoing">
+          <div class="section-heading">
+            <h2>Checkout Aktif</h2>
+            <p class="muted">Pesanan baru dan yang sedang diproses tampil di sini.</p>
+          </div>
+          <div id="admin-order-list" class="order-list"></div>
+        </section>
+
+        <section class="panel admin-tab-panel hidden" data-panel="complete">
+          <div class="section-heading">
+            <h2>Complete</h2>
+            <p class="muted">Pesanan yang sudah selesai akan dipindahkan ke sini.</p>
+          </div>
+          <div id="admin-complete-order-list" class="order-list"></div>
+        </section>
+
+        <section class="panel admin-tab-panel hidden" data-panel="denied">
+          <div class="section-heading">
+            <h2>Denied Order</h2>
+            <p class="muted">Order dengan pembayaran ditolak akan dipindahkan ke sini.</p>
+          </div>
+          <div id="admin-denied-order-list" class="order-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="product-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 id="product-modal-title">Produk Baru</h2>
+            <p class="muted">Isi detail produk lalu upload ke katalog.</p>
+          </div>
+          <button id="close-product-modal" class="icon-button" type="button">Tutup</button>
+        </div>
+        <input id="editing-product-id" type="hidden" name="editingProductId" />
+        <form id="product-form" class="form-grid">
+          <label>
+            Nama Produk
+            <input name="name" type="text" required />
+          </label>
+          <label>
+            Kategori
+            <input name="category" type="text" placeholder="Elektronik" />
+          </label>
+          <label class="full-width">
+            Deskripsi
+            <textarea name="description" rows="4"></textarea>
+          </label>
+          <div class="full-width variant-builder">
+            <div class="variant-builder-header">
+              <div>
+                <strong>Varian Produk</strong>
+                <p class="muted">Contoh: 1/4 kg, 1/2 kg, 1 kg dengan harga dan stok masing-masing.</p>
+              </div>
+              <button id="add-variant-row" class="secondary-button" type="button">Tambah Varian</button>
+            </div>
+            <div id="variant-rows" class="variant-rows"></div>
+          </div>
+          <label class="full-width">
+            Gambar
+            <input name="image" type="file" accept="image/*" />
+          </label>
+          <div class="full-width form-actions">
+            <button id="submit-product-button" class="primary-button" type="submit" disabled>Simpan Produk</button>
+            <p id="form-message" class="muted"></p>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/admin.js"></script>
+  </body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Checkout - Toko Kemayoran</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Checkout</p>
+        <h1>Selesaikan Pesanan</h1>
+      </div>
+      <a class="secondary-button" href="/">Kembali ke toko</a>
+    </header>
+
+    <main class="checkout-layout">
+      <section class="panel">
+        <div class="section-heading">
+          <h2>Data Penerima</h2>
+          <p class="muted">Isi data untuk proses pesanan.</p>
+        </div>
+        <div class="payment-info-box">
+          <h3>Pilih Metode Pembayaran</h3>
+          <p class="muted">Bisa transfer langsung atau kirim konfirmasi pesanan ke WhatsApp penjual.</p>
+          <div id="payment-info" class="payment-info-grid"></div>
+        </div>
+        <form id="checkout-form" class="form-grid">
+          <label>
+            Nama
+            <input name="customerName" type="text" required />
+          </label>
+          <label>
+            Nomor HP
+            <input name="phone" type="tel" required />
+          </label>
+          <label class="full-width">
+            Alamat
+            <textarea name="address" rows="4" required></textarea>
+          </label>
+          <label class="full-width">
+            Catatan
+            <textarea name="notes" rows="3" placeholder="Opsional"></textarea>
+          </label>
+          <fieldset class="full-width payment-method-fieldset">
+            <legend>Metode Pembayaran</legend>
+            <div class="payment-method-grid">
+              <label class="payment-method-card">
+                <input name="paymentMethod" type="radio" value="Transfer Bank" checked />
+                <span>
+                  <strong>Transfer Bank</strong>
+                  <small>Transfer ke rekening toko lalu upload bukti bayar.</small>
+                </span>
+              </label>
+              <label class="payment-method-card">
+                <input name="paymentMethod" type="radio" value="WhatsApp Penjual" />
+                <span>
+                  <strong>WhatsApp Penjual</strong>
+                  <small>Kirim detail order ke penjual dan konfirmasi pembayaran di chat.</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+          <div id="bank-transfer-fields" class="full-width nested-form-grid">
+            <label>
+              Nama Pengirim
+              <input name="senderName" type="text" />
+            </label>
+            <label class="full-width">
+              Catatan Transfer
+              <textarea name="transferNote" rows="3" placeholder="Contoh: transfer dari BCA atas nama Andi"></textarea>
+            </label>
+            <label class="full-width">
+              Bukti Transfer
+              <input name="paymentProof" type="file" accept="image/*" />
+            </label>
+          </div>
+          <div id="whatsapp-fields" class="full-width whatsapp-info-box hidden">
+            <p class="muted">Setelah klik kirim, order akan dibuat lalu browser membuka WhatsApp penjual dengan ringkasan pesanan.</p>
+          </div>
+          <div class="full-width form-actions">
+            <button class="primary-button" type="submit">Kirim Pesanan</button>
+            <p id="checkout-message" class="muted"></p>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h2>Ringkasan Pesanan</h2>
+          <p id="checkout-summary" class="muted"></p>
+        </div>
+        <div id="checkout-items" class="cart-items checkout-items"></div>
+        <div class="cart-footer checkout-total-box">
+          <div class="total-row">
+            <span>Total</span>
+            <strong id="checkout-total">Rp0</strong>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/checkout.js"></script>
+  </body>
+</html>
