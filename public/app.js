@@ -82,9 +82,8 @@ function renderProducts() {
 
     image.src = product.imageUrl || placeholderImage;
     image.alt = product.name;
-    card.querySelector(".category-badge").textContent = product.category;
-    card.querySelector(".stock-badge").textContent = `Total stok ${sumVariantStock(product.variants)}`;
-    card.querySelector("h4").textContent = product.name;
+    card.querySelector(".category-text").textContent = product.category;
+    card.querySelector(".product-title").textContent = product.name;
     card.querySelector(".description").textContent = product.description || "Tidak ada deskripsi.";
 
     product.variants.forEach((variant) => {
@@ -101,23 +100,32 @@ function renderProducts() {
     variantSelect.addEventListener("change", () => {
       const nextVariant = findSelectedVariant(product, variantSelect.value);
       card.querySelector(".price").textContent = formatCurrency(nextVariant.price);
-      button.disabled = nextVariant.stock === 0;
-      button.textContent = nextVariant.stock === 0 ? "Habis" : "Tambah";
+      updateAllProductButtons();
     });
 
-    const content = card.querySelector(".product-content");
-    content.insertBefore(variantSelect, card.querySelector(".price-row"));
+    const controls = card.querySelector(".product-controls");
+    controls.insertBefore(variantSelect, card.querySelector(".add-to-cart-button"));
 
     const button = card.querySelector(".add-to-cart-button");
-    button.disabled = selectedVariant.stock === 0;
-    button.textContent = selectedVariant.stock === 0 ? "Habis" : "Tambah";
+    
     button.addEventListener("click", () => {
       const chosenVariant = findSelectedVariant(product, variantSelect.value);
-      flyToCart(button);
-      addToCart(product, chosenVariant);
+      const inCart = cart.some((item) => item.id === product.id && item.variantId === chosenVariant.id);
+      
+      if (inCart) {
+        cart = cart.filter((item) => !(item.id === product.id && item.variantId === chosenVariant.id));
+        saveCart();
+        renderCart();
+        updateAllProductButtons();
+        showNotification(`${product.name} dihapus dari keranjang.`);
+      } else {
+        flyToCart(button);
+        addToCart(product, chosenVariant);
+      }
     });
     productGrid.appendChild(card);
   });
+  updateAllProductButtons();
 }
 
 function addToCart(product, variant) {
@@ -135,18 +143,20 @@ function addToCart(product, variant) {
       variantLabel: variant.label,
       name: product.name,
       price: variant.price,
-      quantity: 1
+      quantity: 1,
+      imageUrl: product.imageUrl || placeholderImage
     });
   }
 
   saveCart();
   renderCart();
+  updateAllProductButtons();
   showNotification(`${product.name} (${variant.label}) ditambahkan ke keranjang.`);
 }
 
 function renderCart() {
   cartItemsContainer.innerHTML = "";
-  cartCount.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0));
+  cartCount.textContent = String(cart.length);
 
   if (!cart.length) {
     cartItemsContainer.innerHTML = "<p>Keranjang masih kosong.</p>";
@@ -158,32 +168,99 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-item";
     row.innerHTML = `
-      <div class="cart-item-row">
-        <div class="cart-item-left">
-          <span class="cart-item-title">${item.name}</span>
-          <div class="cart-item-actions">
-            <button class="cart-item-delete" type="button" aria-label="Hapus">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-            </button>
+      <div class="cart-item-new">
+        <img src="${item.imageUrl || placeholderImage}" alt="${item.name}" class="cart-item-image" />
+        <div class="cart-item-details">
+          <div class="cart-item-header">
+            <span class="cart-item-title">${item.name}</span>
+            <span class="cart-item-price">${formatCurrency(item.price * item.quantity)}</span>
           </div>
-        </div>
-        <div class="cart-item-right">
-          <span class="cart-item-price">${formatCurrency(item.price * item.quantity)}</span>
-          <span class="cart-item-meta muted">${item.variantLabel} • Qty ${item.quantity}</span>
+          <span class="cart-item-subtitle muted">${item.variantLabel}</span>
+          <div class="cart-item-bottom">
+            <div class="cart-item-qty">
+              <span>Qty:</span>
+              <button class="qty-btn btn-minus" type="button">-</button>
+              <span>${item.quantity}</span>
+              <button class="qty-btn btn-plus" type="button">+</button>
+            </div>
+            <button class="cart-item-delete-link" type="button">DELETE</button>
+          </div>
         </div>
       </div>
     `;
-    row.querySelector(".cart-item-delete").addEventListener("click", () => {
+    row.querySelector(".cart-item-delete-link").addEventListener("click", () => {
       cart = cart.filter((cartItem) => !(cartItem.id === item.id && cartItem.variantId === item.variantId));
       saveCart();
       renderCart();
+      updateAllProductButtons();
       showNotification(`${item.name} dihapus dari keranjang.`);
+    });
+    row.querySelector(".btn-minus").addEventListener("click", () => {
+      updateCartItemQuantity(item.id, item.variantId, -1);
+    });
+    row.querySelector(".btn-plus").addEventListener("click", () => {
+      updateCartItemQuantity(item.id, item.variantId, 1);
     });
     cartItemsContainer.appendChild(row);
   });
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   cartTotal.textContent = formatCurrency(total);
+}
+
+function updateCartItemQuantity(productId, variantId, change) {
+  const item = cart.find((item) => item.id === productId && item.variantId === variantId);
+  if (!item) return;
+
+  const product = products.find((p) => p.id === productId);
+  const variant = product ? product.variants.find((v) => v.id === variantId) : null;
+
+  if (change > 0) {
+    if (variant && item.quantity >= variant.stock) {
+      showNotification("Stok tidak mencukupi.");
+      return;
+    }
+    item.quantity += 1;
+  } else if (change < 0) {
+    item.quantity -= 1;
+    if (item.quantity <= 0) {
+      cart = cart.filter((cartItem) => !(cartItem.id === productId && cartItem.variantId === variantId));
+      showNotification(`${item.name} dihapus dari keranjang.`);
+    }
+  }
+
+  saveCart();
+  renderCart();
+  updateAllProductButtons();
+}
+
+function updateAllProductButtons() {
+  const cards = productGrid.querySelectorAll(".product-card");
+  cards.forEach((card) => {
+    const title = card.querySelector("h4").textContent;
+    const product = products.find((p) => p.name === title);
+    if (!product) return;
+
+    const variantSelect = card.querySelector(".variant-select");
+    const selectedVariant = findSelectedVariant(product, variantSelect.value);
+    const button = card.querySelector(".add-to-cart-button");
+
+    const inCart = cart.some((item) => item.id === product.id && item.variantId === selectedVariant.id);
+
+    if (selectedVariant.stock === 0) {
+      button.textContent = "Habis";
+      button.disabled = true;
+      button.classList.remove("danger-button");
+    } else if (inCart) {
+      button.textContent = "Hapus";
+      button.disabled = false;
+      button.classList.add("danger-button");
+    } else {
+      button.textContent = "Tambah";
+      button.disabled = false;
+      button.classList.remove("danger-button");
+    }
+  });
 }
 
 function normalizeProduct(product) {
