@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
-const fs = require("fs");
 const path = require("path");
 
 const app = express();
@@ -13,38 +12,17 @@ const bankName = process.env.BANK_NAME || "BCA";
 const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER || "1234567890";
 const bankAccountHolder = process.env.BANK_ACCOUNT_HOLDER || "Toko Kemayoran";
 const sellerWhatsAppNumber = process.env.SELLER_WHATSAPP_NUMBER || "6281234567890";
-
-const dataDir = path.join(__dirname, "data");
-const uploadDir = path.join(__dirname, "uploads");
-const productsFile = path.join(dataDir, "products.json");
-const ordersFile = path.join(dataDir, "orders.json");
-
-fs.mkdirSync(dataDir, { recursive: true });
-fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(productsFile)) {
-  fs.writeFileSync(productsFile, "[]");
-}
-if (!fs.existsSync(ordersFile)) {
-  fs.writeFileSync(ordersFile, "[]");
-}
+const supabaseUrl = requireEnv("SUPABASE_URL").replace(/\/+$/, "");
+const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
+const supabaseStorageUrl = `${supabaseUrl}/storage/v1`;
+const supabaseProductImageBucket = process.env.SUPABASE_PRODUCT_IMAGE_BUCKET || "product-images";
+const supabasePaymentProofBucket = process.env.SUPABASE_PAYMENT_PROOF_BUCKET || "payment-proofs";
 
 const orderStreamClients = new Set();
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const baseName = path
-      .basename(file.originalname, ext)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    cb(null, `${Date.now()}-${baseName}${ext}`);
-  }
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024
   },
@@ -59,59 +37,10 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
-app.use("/uploads", express.static(uploadDir));
 app.use(express.static(path.join(__dirname, "public")));
 
-function readProducts() {
-  try {
-    return JSON.parse(fs.readFileSync(productsFile, "utf8"));
-  } catch (_error) {
-    return [];
-  }
-}
-
-function writeProducts(products) {
-  fs.writeFileSync(productsFile, JSON.stringify(products, null, 2));
-}
-
-function readOrders() {
-  try {
-    return JSON.parse(fs.readFileSync(ordersFile, "utf8"));
-  } catch (_error) {
-    return [];
-  }
-}
-
-function writeOrders(orders) {
-  fs.writeFileSync(ordersFile, JSON.stringify(orders, null, 2));
-}
-
-function getAdminTokenFromRequest(req) {
-  return req.header("x-admin-token") || req.query.token;
-}
-
-function requireAdmin(req, res, next) {
-  const token = getAdminTokenFromRequest(req);
-  if (token !== adminToken) {
-    res.status(401).json({ message: "Token admin tidak valid." });
-    return;
-  }
-  next();
-}
-
-function sendOrderStreamEvent(client, event, payload) {
-  client.write(`event: ${event}\n`);
-  client.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-function broadcastOrderEvent(event, payload) {
-  for (const client of orderStreamClients) {
-    sendOrderStreamEvent(client, event, payload);
-  }
-}
-
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, storage: "supabase" });
 });
 
 app.get("/api/admin/verify", requireAdmin, (_req, res) => {
@@ -146,12 +75,12 @@ app.get("/api/payment-info", (_req, res) => {
   });
 });
 
-app.get("/api/products", (_req, res) => {
-  const products = readProducts().sort((a, b) => b.createdAt - a.createdAt);
+app.get("/api/products", asyncHandler(async (_req, res) => {
+  const products = await fetchProducts();
   res.json(products);
-});
+}));
 
-app.post("/api/products", requireAdmin, upload.single("image"), (req, res) => {
+app.post("/api/products", requireAdmin, upload.single("image"), asyncHandler(async (req, res) => {
   const { name, description, category, variants } = req.body;
   const normalizedVariants = normalizeVariants(variants);
 
@@ -160,23 +89,42 @@ app.post("/api/products", requireAdmin, upload.single("image"), (req, res) => {
     return;
   }
 
-  const products = readProducts();
-  const product = {
-    id: cryptoRandomId(),
-    name: String(name).trim(),
-    description: String(description || "").trim(),
-    category: String(category || "Umum").trim() || "Umum",
-    imageUrl: req.file ? `/uploads/${req.file.filename}` : "",
-    variants: normalizedVariants,
-    createdAt: Date.now()
-  };
+  let imageUrl = "";
 
-  products.push(product);
-  writeProducts(products);
-  res.status(201).json(product);
-});
+  try {
+    if (req.file) {
+      imageUrl = await uploadStorageObject(supabaseProductImageBucket, req.file, "products");
+    }
 
-app.patch("/api/products/:id", requireAdmin, upload.single("image"), (req, res) => {
+    const createdRows = await supabaseJson(`/products`, {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation"
+      },
+      body: [
+        {
+          id: cryptoRandomId(),
+          name: String(name).trim(),
+          description: String(description || "").trim(),
+          category: String(category || "Umum").trim() || "Umum",
+          image_url: imageUrl
+        }
+      ]
+    });
+
+    const productRow = createdRows[0];
+    await replaceProductVariants(productRow.id, normalizedVariants);
+    const product = await fetchProductById(productRow.id);
+    res.status(201).json(product);
+  } catch (error) {
+    if (imageUrl) {
+      await deleteStorageObjectByPublicUrl(imageUrl).catch(() => {});
+    }
+    throw error;
+  }
+}));
+
+app.patch("/api/products/:id", requireAdmin, upload.single("image"), asyncHandler(async (req, res) => {
   const { name, description, category, variants } = req.body;
   const normalizedVariants = normalizeVariants(variants);
 
@@ -185,34 +133,52 @@ app.patch("/api/products/:id", requireAdmin, upload.single("image"), (req, res) 
     return;
   }
 
-  const products = readProducts();
-  const product = products.find((item) => item.id === req.params.id);
-
-  if (!product) {
+  const existingProduct = await fetchProductById(req.params.id);
+  if (!existingProduct) {
     res.status(404).json({ message: "Produk tidak ditemukan." });
     return;
   }
 
-  if (req.file && product.imageUrl && product.imageUrl.startsWith("/uploads/")) {
-    const previousImagePath = path.join(__dirname, product.imageUrl.replace(/^\//, ""));
-    if (fs.existsSync(previousImagePath)) {
-      fs.unlinkSync(previousImagePath);
+  let nextImageUrl = existingProduct.imageUrl || "";
+
+  try {
+    if (req.file) {
+      nextImageUrl = await uploadStorageObject(supabaseProductImageBucket, req.file, "products");
     }
+
+    await supabaseJson(`/products`, {
+      method: "PATCH",
+      searchParams: {
+        id: `eq.${req.params.id}`
+      },
+      headers: {
+        Prefer: "return=minimal"
+      },
+      body: {
+        name: String(name).trim(),
+        description: String(description || "").trim(),
+        category: String(category || "Umum").trim() || "Umum",
+        image_url: nextImageUrl
+      }
+    });
+
+    await replaceProductVariants(req.params.id, normalizedVariants);
+
+    if (req.file && existingProduct.imageUrl) {
+      await deleteStorageObjectByPublicUrl(existingProduct.imageUrl).catch(() => {});
+    }
+
+    const product = await fetchProductById(req.params.id);
+    res.json(product);
+  } catch (error) {
+    if (req.file && nextImageUrl && nextImageUrl !== existingProduct.imageUrl) {
+      await deleteStorageObjectByPublicUrl(nextImageUrl).catch(() => {});
+    }
+    throw error;
   }
+}));
 
-  product.name = String(name).trim();
-  product.description = String(description || "").trim();
-  product.category = String(category || "Umum").trim() || "Umum";
-  product.variants = normalizedVariants;
-  if (req.file) {
-    product.imageUrl = `/uploads/${req.file.filename}`;
-  }
-
-  writeProducts(products);
-  res.json(product);
-});
-
-app.post("/api/orders", upload.single("paymentProof"), (req, res) => {
+app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, res) => {
   const { customerName, phone, address, notes, items, paymentMethod, senderName, transferNote } = req.body;
   const parsedItems = safeJsonParse(items);
   const normalizedPaymentMethod = String(paymentMethod || "").trim();
@@ -241,83 +207,54 @@ app.post("/api/orders", upload.single("paymentProof"), (req, res) => {
     return;
   }
 
-  const products = readProducts();
-  const normalizedItems = [];
+  let paymentProofUrl = "";
 
-  for (const item of parsedItems) {
-    const quantity = Number(item.quantity);
-    if (!item.id || Number.isNaN(quantity) || quantity <= 0) {
-      res.status(400).json({ message: "Item checkout tidak valid." });
-      return;
+  try {
+    if (req.file) {
+      paymentProofUrl = await uploadStorageObject(supabasePaymentProofBucket, req.file, "payment-proofs");
     }
 
-    const product = products.find((entry) => entry.id === item.id);
-    if (!product) {
-      res.status(404).json({ message: `Produk tidak ditemukan untuk item ${item.id}.` });
-      return;
-    }
-
-    const productVariant = getProductVariant(product, item.variantId);
-    if (!productVariant) {
-      res.status(404).json({ message: `Varian produk tidak ditemukan untuk item ${item.id}.` });
-      return;
-    }
-
-    if (productVariant.stock < quantity) {
-      res.status(400).json({ message: `Stok ${product.name} varian ${productVariant.label} tidak mencukupi.` });
-      return;
-    }
-
-    normalizedItems.push({
-      productId: product.id,
-      variantId: productVariant.id,
-      variantLabel: productVariant.label,
-      name: product.name,
-      price: productVariant.price,
-      quantity,
-      subtotal: productVariant.price * quantity
+    const orderId = await supabaseJson(`/rpc/create_order_with_items`, {
+      method: "POST",
+      body: {
+        payload: {
+          id: cryptoRandomId(),
+          customer_name: String(customerName).trim(),
+          phone: String(phone).trim(),
+          address: String(address).trim(),
+          notes: String(notes || "").trim(),
+          payment_method: normalizedPaymentMethod,
+          sender_name: String(senderName || customerName).trim(),
+          transfer_note: String(transferNote || "").trim(),
+          payment_proof_url: paymentProofUrl,
+          payment_status: isBankTransfer ? "Menunggu Verifikasi" : "Menunggu Konfirmasi",
+          status: "Baru",
+          items: parsedItems.map((item) => ({
+            id: String(item.id || "").trim(),
+            variantId: String(item.variantId || "").trim(),
+            quantity: Number(item.quantity)
+          }))
+        }
+      }
     });
+
+    const order = await fetchOrderById(orderId);
+    broadcastOrderEvent("order:created", { orderId });
+    res.status(201).json(order);
+  } catch (error) {
+    if (paymentProofUrl) {
+      await deleteStorageObjectByPublicUrl(paymentProofUrl).catch(() => {});
+    }
+    throw error;
   }
+}));
 
-  for (const item of normalizedItems) {
-    const product = products.find((entry) => entry.id === item.productId);
-    const productVariant = getProductVariant(product, item.variantId);
-    productVariant.stock -= item.quantity;
-  }
-
-  writeProducts(products);
-
-  const orders = readOrders();
-  const order = {
-    id: cryptoRandomId(),
-    customerName: String(customerName).trim(),
-    phone: String(phone).trim(),
-    address: String(address).trim(),
-    notes: String(notes || "").trim(),
-    paymentMethod: normalizedPaymentMethod,
-    senderName: String(senderName || customerName).trim(),
-    transferNote: String(transferNote || "").trim(),
-    paymentProofUrl: req.file ? `/uploads/${req.file.filename}` : "",
-    paymentStatus: isBankTransfer ? "Menunggu Verifikasi" : "Menunggu Konfirmasi",
-    paidAt: null,
-    items: normalizedItems,
-    total: normalizedItems.reduce((sum, item) => sum + item.subtotal, 0),
-    createdAt: Date.now(),
-    status: "Baru"
-  };
-
-  orders.push(order);
-  writeOrders(orders);
-  broadcastOrderEvent("order:created", { orderId: order.id });
-  res.status(201).json(order);
-});
-
-app.get("/api/orders", requireAdmin, (_req, res) => {
-  const orders = readOrders().sort((a, b) => b.createdAt - a.createdAt);
+app.get("/api/orders", requireAdmin, asyncHandler(async (_req, res) => {
+  const orders = await fetchOrders();
   res.json(orders);
-});
+}));
 
-app.patch("/api/orders/:id/status", requireAdmin, (req, res) => {
+app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) => {
   const { status } = req.body;
   const allowedStatuses = ["Baru", "Diproses", "Selesai"];
 
@@ -326,9 +263,7 @@ app.patch("/api/orders/:id/status", requireAdmin, (req, res) => {
     return;
   }
 
-  const orders = readOrders();
-  const order = orders.find((entry) => entry.id === req.params.id);
-
+  const order = await fetchOrderById(req.params.id);
   if (!order) {
     res.status(404).json({ message: "Order tidak ditemukan." });
     return;
@@ -342,13 +277,25 @@ app.patch("/api/orders/:id/status", requireAdmin, (req, res) => {
     return;
   }
 
-  order.status = status;
-  writeOrders(orders);
-  broadcastOrderEvent("order:updated", { orderId: order.id, type: "status" });
-  res.json(order);
-});
+  await supabaseJson(`/orders`, {
+    method: "PATCH",
+    searchParams: {
+      id: `eq.${req.params.id}`
+    },
+    headers: {
+      Prefer: "return=minimal"
+    },
+    body: {
+      status
+    }
+  });
 
-app.patch("/api/orders/:id/payment-status", requireAdmin, (req, res) => {
+  const updatedOrder = await fetchOrderById(req.params.id);
+  broadcastOrderEvent("order:updated", { orderId: req.params.id, type: "status" });
+  res.json(updatedOrder);
+}));
+
+app.patch("/api/orders/:id/payment-status", requireAdmin, asyncHandler(async (req, res) => {
   const { paymentStatus } = req.body;
   const allowedStatuses = ["Menunggu Verifikasi", "Menunggu Konfirmasi", "Sudah Dibayar", "Ditolak"];
 
@@ -357,42 +304,54 @@ app.patch("/api/orders/:id/payment-status", requireAdmin, (req, res) => {
     return;
   }
 
-  const orders = readOrders();
-  const order = orders.find((entry) => entry.id === req.params.id);
-
+  const order = await fetchOrderById(req.params.id);
   if (!order) {
     res.status(404).json({ message: "Order tidak ditemukan." });
     return;
   }
 
-  order.paymentStatus = paymentStatus;
-  order.paidAt = paymentStatus === "Sudah Dibayar" ? Date.now() : null;
-  writeOrders(orders);
-  broadcastOrderEvent("order:updated", { orderId: order.id, type: "payment-status" });
-  res.json(order);
-});
+  await supabaseJson(`/orders`, {
+    method: "PATCH",
+    searchParams: {
+      id: `eq.${req.params.id}`
+    },
+    headers: {
+      Prefer: "return=minimal"
+    },
+    body: {
+      payment_status: paymentStatus,
+      paid_at: paymentStatus === "Sudah Dibayar" ? new Date().toISOString() : null
+    }
+  });
 
-app.delete("/api/products/:id", requireAdmin, (req, res) => {
-  const products = readProducts();
-  const product = products.find((item) => item.id === req.params.id);
+  const updatedOrder = await fetchOrderById(req.params.id);
+  broadcastOrderEvent("order:updated", { orderId: req.params.id, type: "payment-status" });
+  res.json(updatedOrder);
+}));
 
+app.delete("/api/products/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const product = await fetchProductById(req.params.id);
   if (!product) {
     res.status(404).json({ message: "Produk tidak ditemukan." });
     return;
   }
 
-  const nextProducts = products.filter((item) => item.id !== req.params.id);
-  writeProducts(nextProducts);
+  await supabaseJson(`/products`, {
+    method: "DELETE",
+    searchParams: {
+      id: `eq.${req.params.id}`
+    },
+    headers: {
+      Prefer: "return=minimal"
+    }
+  });
 
   if (product.imageUrl) {
-    const imagePath = path.join(__dirname, product.imageUrl.replace(/^\//, ""));
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
+    await deleteStorageObjectByPublicUrl(product.imageUrl).catch(() => {});
   }
 
   res.json({ message: "Produk dihapus." });
-});
+}));
 
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
@@ -414,9 +373,368 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.listen(port, () => {
-  console.log(`Server jalan di http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Server jalan di http://localhost:${port}`);
+  });
+}
+
+module.exports = app;
+
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Environment variable ${name} wajib diisi.`);
+  }
+  return value;
+}
+
+function getAdminTokenFromRequest(req) {
+  return req.header("x-admin-token") || req.query.token;
+}
+
+function requireAdmin(req, res, next) {
+  const token = getAdminTokenFromRequest(req);
+  if (token !== adminToken) {
+    res.status(401).json({ message: "Token admin tidak valid." });
+    return;
+  }
+  next();
+}
+
+function asyncHandler(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
+function sendOrderStreamEvent(client, event, payload) {
+  client.write(`event: ${event}\n`);
+  client.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function broadcastOrderEvent(event, payload) {
+  for (const client of orderStreamClients) {
+    sendOrderStreamEvent(client, event, payload);
+  }
+}
+
+async function fetchProducts() {
+  const [productRows, variantRows] = await Promise.all([
+    supabaseJson(`/products`, {
+      searchParams: {
+        select: "*",
+        order: "created_at.desc"
+      }
+    }),
+    supabaseJson(`/product_variants`, {
+      searchParams: {
+        select: "*",
+        order: "created_at.asc"
+      }
+    })
+  ]);
+
+  const variantsByProductId = groupBy(variantRows, "product_id");
+  return productRows.map((row) => mapProductRow(row, variantsByProductId.get(row.id) || []));
+}
+
+async function fetchProductById(id) {
+  const productRows = await supabaseJson(`/products`, {
+    searchParams: {
+      select: "*",
+      id: `eq.${id}`,
+      limit: "1"
+    }
+  });
+
+  const productRow = productRows[0];
+  if (!productRow) {
+    return null;
+  }
+
+  const variantRows = await supabaseJson(`/product_variants`, {
+    searchParams: {
+      select: "*",
+      product_id: `eq.${id}`,
+      order: "created_at.asc"
+    }
+  });
+
+  return mapProductRow(productRow, variantRows);
+}
+
+async function fetchProductVariants(productId) {
+  return supabaseJson(`/product_variants`, {
+    searchParams: {
+      select: "*",
+      product_id: `eq.${productId}`,
+      order: "created_at.asc"
+    }
+  });
+}
+
+async function replaceProductVariants(productId, variants) {
+  const existingVariants = await fetchProductVariants(productId);
+  const nextVariantIds = new Set(variants.map((variant) => String(variant.id)));
+
+  await supabaseJson(`/product_variants`, {
+    method: "POST",
+    searchParams: {
+      on_conflict: "id"
+    },
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=representation"
+    },
+    body: variants.map((variant) => ({
+      id: String(variant.id),
+      product_id: productId,
+      label: variant.label,
+      price: variant.price,
+      stock: variant.stock
+    }))
+  });
+
+  for (const existingVariant of existingVariants) {
+    if (!nextVariantIds.has(String(existingVariant.id))) {
+      await supabaseJson(`/product_variants`, {
+        method: "DELETE",
+        searchParams: {
+          id: `eq.${existingVariant.id}`
+        },
+        headers: {
+          Prefer: "return=minimal"
+        }
+      });
+    }
+  }
+}
+
+async function fetchOrders() {
+  const orderRows = await supabaseJson(`/orders`, {
+    searchParams: {
+      select: "*",
+      order: "created_at.desc"
+    }
+  });
+
+  if (!orderRows.length) {
+    return [];
+  }
+
+  const orderItems = await supabaseJson(`/order_items`, {
+    searchParams: {
+      select: "*",
+      order: "created_at.asc"
+    }
+  });
+
+  const itemsByOrderId = groupBy(orderItems, "order_id");
+  return orderRows.map((row) => mapOrderRow(row, itemsByOrderId.get(row.id) || []));
+}
+
+async function fetchOrderById(id) {
+  const orderRows = await supabaseJson(`/orders`, {
+    searchParams: {
+      select: "*",
+      id: `eq.${id}`,
+      limit: "1"
+    }
+  });
+
+  const orderRow = orderRows[0];
+  if (!orderRow) {
+    return null;
+  }
+
+  const itemRows = await supabaseJson(`/order_items`, {
+    searchParams: {
+      select: "*",
+      order_id: `eq.${id}`,
+      order: "created_at.asc"
+    }
+  });
+
+  return mapOrderRow(orderRow, itemRows);
+}
+
+function mapProductRow(row, variants) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    category: row.category || "Umum",
+    imageUrl: row.image_url || "",
+    createdAt: row.created_at,
+    variants: variants.map((variant) => ({
+      id: variant.id,
+      label: variant.label,
+      price: Number(variant.price || 0),
+      stock: Number(variant.stock || 0)
+    }))
+  };
+}
+
+function mapOrderRow(row, items) {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    phone: row.phone,
+    address: row.address,
+    notes: row.notes || "",
+    paymentMethod: row.payment_method,
+    senderName: row.sender_name || "",
+    transferNote: row.transfer_note || "",
+    paymentProofUrl: row.payment_proof_url || "",
+    paymentStatus: row.payment_status,
+    paidAt: row.paid_at,
+    total: Number(row.total || 0),
+    createdAt: row.created_at,
+    status: row.status,
+    items: items.map((item) => ({
+      id: item.id,
+      productId: item.product_id,
+      variantId: item.variant_id,
+      variantLabel: item.variant_label,
+      name: item.name,
+      price: Number(item.price || 0),
+      quantity: Number(item.quantity || 0),
+      subtotal: Number(item.subtotal || 0)
+    }))
+  };
+}
+
+function groupBy(rows, key) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const groupKey = row[key];
+    const current = grouped.get(groupKey) || [];
+    current.push(row);
+    grouped.set(groupKey, current);
+  }
+
+  return grouped;
+}
+
+async function uploadStorageObject(bucket, file, folder) {
+  const extension = path.extname(file.originalname || "").toLowerCase();
+  const baseName = path
+    .basename(file.originalname || "file", extension)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "file";
+  const objectPath = `${folder}/${Date.now()}-${baseName}${extension || inferExtension(file.mimetype)}`;
+
+  await supabaseJson(`/object/${bucket}/${objectPath}`, {
+    baseUrl: supabaseStorageUrl,
+    method: "POST",
+    body: file.buffer,
+    headers: {
+      "Content-Type": file.mimetype,
+      "x-upsert": "false"
+    }
+  });
+
+  return `${supabaseStorageUrl}/object/public/${bucket}/${objectPath}`;
+}
+
+async function deleteStorageObjectByPublicUrl(fileUrl) {
+  const parsed = extractBucketAndObjectPath(fileUrl);
+  if (!parsed) {
+    return;
+  }
+
+  await supabaseJson(`/object/${parsed.bucket}/${parsed.objectPath}`, {
+    baseUrl: supabaseStorageUrl,
+    method: "DELETE"
+  });
+}
+
+function extractBucketAndObjectPath(fileUrl) {
+  if (!fileUrl || !fileUrl.startsWith(supabaseStorageUrl)) {
+    return null;
+  }
+
+  const publicPrefix = `${supabaseStorageUrl}/object/public/`;
+  if (!fileUrl.startsWith(publicPrefix)) {
+    return null;
+  }
+
+  const relativePath = fileUrl.slice(publicPrefix.length);
+  const [bucket, ...rest] = relativePath.split("/");
+  if (!bucket || !rest.length) {
+    return null;
+  }
+
+  return {
+    bucket,
+    objectPath: rest.join("/")
+  };
+}
+
+async function supabaseJson(pathname, options = {}) {
+  const {
+    baseUrl = supabaseRestUrl,
+    searchParams,
+    headers = {},
+    body,
+    method = "GET"
+  } = options;
+  const url = new URL(pathname.replace(/^\//, ""), `${baseUrl}/`);
+
+  if (searchParams) {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, value);
+      }
+    }
+  }
+
+  const isBinaryBody = Buffer.isBuffer(body);
+  const requestHeaders = {
+    apikey: supabaseServiceRoleKey,
+    Authorization: `Bearer ${supabaseServiceRoleKey}`,
+    ...headers
+  };
+
+  if (body !== undefined && body !== null && !isBinaryBody && !requestHeaders["Content-Type"]) {
+    requestHeaders["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers: requestHeaders,
+    body: body === undefined || body === null
+      ? undefined
+      : isBinaryBody
+        ? body
+        : JSON.stringify(body)
+  });
+  const parsedBody = await parseResponseBody(response);
+
+  if (!response.ok) {
+    const message = parsedBody && typeof parsedBody === "object"
+      ? parsedBody.message || parsedBody.error_description || parsedBody.error
+      : parsedBody;
+    throw new Error(message || `Supabase request gagal (${response.status}).`);
+  }
+
+  return parsedBody;
+}
+
+async function parseResponseBody(response) {
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return text;
+  }
+}
 
 function cryptoRandomId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -456,17 +774,17 @@ function normalizeVariants(rawVariants) {
     .filter(Boolean);
 }
 
-function getProductVariant(product, variantId) {
-  const variants = Array.isArray(product.variants) && product.variants.length
-    ? product.variants
-    : [
-        {
-          id: "default",
-          label: "Reguler",
-          price: Number(product.price || 0),
-          stock: Number(product.stock || 0)
-        }
-      ];
-
-  return variants.find((variant) => variant.id === variantId) || null;
+function inferExtension(mimeType) {
+  switch (mimeType) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+    case "image/svg+xml":
+      return ".svg";
+    default:
+      return "";
+  }
 }

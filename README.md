@@ -7,7 +7,8 @@ Web toko sederhana dengan:
 - halaman checkout internal untuk kirim pesanan
 - admin bisa melihat daftar checkout user
 - fitur keranjang berbasis `localStorage`
-- backend Express dengan upload gambar via `multer`
+- backend Express dengan penyimpanan data di Supabase
+- upload gambar produk dan bukti transfer via Supabase Storage
 
 ## Menjalankan
 
@@ -39,9 +40,28 @@ BANK_NAME=BCA
 BANK_ACCOUNT_NUMBER=1234567890
 BANK_ACCOUNT_HOLDER=Toko Kemayoran
 SELLER_WHATSAPP_NUMBER=6281234567890
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_PRODUCT_IMAGE_BUCKET=product-images
+SUPABASE_PAYMENT_PROOF_BUCKET=payment-proofs
 ```
 
 Template tersedia di `.env.example`.
+
+## Setup Supabase
+
+1. Buat project Supabase.
+2. Jalankan SQL di [supabase/schema.sql](/Users/AND5661/Learn/toko-kemayoran/supabase/schema.sql).
+3. Buat bucket public:
+   - `product-images`
+   - `payment-proofs`
+4. Isi `.env` dengan `SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY`.
+
+Catatan:
+
+- Bucket dibuat public karena UI admin saat ini membuka URL file langsung dari browser.
+- Semua query database dan upload file dilakukan dari backend Express menggunakan `service role key`.
+- JSON lokal `data/products.json`, `data/orders.json`, dan folder `uploads/` tidak lagi dipakai sebagai storage utama.
 
 ## Token admin default
 
