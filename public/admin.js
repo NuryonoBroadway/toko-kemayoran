@@ -76,6 +76,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  const btn = form.querySelector('button[type="submit"]');
+  const originalText = btn.textContent;
+  btn.innerHTML = `<span class="spinner"></span> Loading...`;
+  btn.disabled = true;
+
   formMessage.textContent = "Menyimpan produk...";
   const formData = new FormData(form);
   const variants = collectVariants();
@@ -109,8 +114,12 @@ form.addEventListener("submit", async (event) => {
     closeProductModal();
     prepareCreateMode();
     loadProducts();
+    btn.textContent = originalText;
+    btn.disabled = false;
   } catch (error) {
     formMessage.textContent = error.message;
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 });
 
@@ -127,6 +136,11 @@ async function loginAdmin(event) {
     authMessage.textContent = "Masukkan username dan password.";
     return;
   }
+
+  const btn = loginForm.querySelector('button[type="submit"]');
+  const originalText = btn.textContent;
+  btn.innerHTML = `<span class="spinner"></span> Loading...`;
+  btn.disabled = true;
 
   authMessage.textContent = "Memverifikasi...";
 
@@ -151,12 +165,16 @@ async function loginAdmin(event) {
     authMessage.textContent = "Login berhasil. Sesi aktif.";
     connectOrderStream(result.token);
     loadOrders();
+    btn.textContent = originalText;
+    btn.disabled = false;
   } catch (error) {
     isAdminAuthenticated = false;
     sessionStorage.removeItem("adminToken");
     disconnectOrderStream();
     syncAdminControls();
     authMessage.textContent = error.message;
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
 
@@ -223,10 +241,15 @@ async function loadProducts() {
         productModal.classList.remove("hidden");
       });
 
-      card.querySelector(".product-delete-button").addEventListener("click", async () => {
+      const deleteBtn = card.querySelector(".product-delete-button");
+      deleteBtn.addEventListener("click", async () => {
         if (!isAdminAuthenticated) {
           return;
         }
+
+        const originalText = deleteBtn.textContent;
+        deleteBtn.innerHTML = `<span class="spinner"></span>...`;
+        deleteBtn.disabled = true;
 
         try {
           const response = await fetch(`/api/products/${product.id}`, {
@@ -241,8 +264,11 @@ async function loadProducts() {
           }
           loadProducts();
           loadOrders();
+          showNotification("Produk berhasil dihapus.");
         } catch (error) {
-          alert(error.message);
+          showNotification(error.message || "Gagal menghapus produk.");
+          deleteBtn.textContent = originalText;
+          deleteBtn.disabled = false;
         }
       });
 

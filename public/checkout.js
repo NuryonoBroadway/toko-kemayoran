@@ -33,6 +33,11 @@ checkoutForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const btn = checkoutForm.querySelector('button[type="submit"]');
+  const originalText = btn.textContent;
+  btn.innerHTML = `<span class="spinner"></span> Loading...`;
+  btn.disabled = true;
+
   checkoutMessage.textContent = "Mengirim pesanan...";
   const formData = new FormData(checkoutForm);
   const selectedPaymentMethod = getSelectedPaymentMethod();
@@ -91,6 +96,8 @@ checkoutForm.addEventListener("submit", async (event) => {
       pendingWhatsAppWindow.close();
     }
     checkoutMessage.textContent = error.message;
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 });
 
