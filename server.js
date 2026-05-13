@@ -39,6 +39,35 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+const requireAdmin = asyncHandler(async (req, res, next) => {
+  const token = getAdminTokenFromRequest(req);
+  
+  if (!token) {
+    res.status(401).json({ message: "Token admin diperlukan." });
+    return;
+  }
+
+  try {
+    const sessionRows = await supabaseJson(`/sessions`, {
+      searchParams: {
+        select: "id,user_id,expires_at",
+        id: `eq.${token}`,
+        expires_at: `gt.${new Date().toISOString()}`,
+        limit: "1"
+      }
+    });
+
+    if (!sessionRows.length) {
+      res.status(401).json({ message: "Sesi tidak valid atau telah kedaluwarsa." });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(401).json({ message: "Gagal memvalidasi sesi." });
+  }
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, storage: "supabase" });
 });
@@ -46,6 +75,30 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/admin/verify", requireAdmin, (_req, res) => {
   res.json({ ok: true, authenticated: true });
 });
+
+app.post("/api/admin/login", asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    res.status(400).json({ message: "Username dan password wajib diisi." });
+    return;
+  }
+
+  const token = await supabaseJson(`/rpc/login_user`, {
+    method: "POST",
+    body: {
+      p_username: String(username).trim(),
+      p_password: String(password)
+    }
+  });
+
+  if (!token) {
+    res.status(401).json({ message: "Username atau password salah." });
+    return;
+  }
+
+  res.json({ token });
+}));
 
 app.get("/api/orders/stream", requireAdmin, (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -393,14 +446,7 @@ function getAdminTokenFromRequest(req) {
   return req.header("x-admin-token") || req.query.token;
 }
 
-function requireAdmin(req, res, next) {
-  const token = getAdminTokenFromRequest(req);
-  if (token !== adminToken) {
-    res.status(401).json({ message: "Token admin tidak valid." });
-    return;
-  }
-  next();
-}
+
 
 function asyncHandler(handler) {
   return (req, res, next) => {

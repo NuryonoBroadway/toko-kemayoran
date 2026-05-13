@@ -1,8 +1,13 @@
 const form = document.getElementById("product-form");
-const tokenInput = document.getElementById("admin-token");
-const verifyButton = document.getElementById("verify-admin-token");
+const usernameInput = document.getElementById("admin-username");
+const passwordInput = document.getElementById("admin-password");
+const loginForm = document.getElementById("login-form");
 const authMessage = document.getElementById("admin-auth-message");
 const formMessage = document.getElementById("form-message");
+
+function getSavedToken() {
+  return sessionStorage.getItem("adminToken") || "";
+}
 const adminProductList = document.getElementById("admin-product-list");
 const adminOrderList = document.getElementById("admin-order-list");
 const adminCompleteOrderList = document.getElementById("admin-complete-order-list");
@@ -22,17 +27,9 @@ const addVariantRowButton = document.getElementById("add-variant-row");
 let isAdminAuthenticated = false;
 let orderEventSource = null;
 
-tokenInput.addEventListener("input", () => {
-  isAdminAuthenticated = false;
-  disconnectOrderStream();
-  syncAdminControls();
-  authMessage.textContent = "Masukkan token admin untuk mengaktifkan aksi produk dan order.";
-  adminOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
-  adminCompleteOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
-  adminDeniedOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
-});
-
-verifyButton.addEventListener("click", verifyAdminToken);
+if (loginForm) {
+  loginForm.addEventListener("submit", loginAdmin);
+}
 addVariantRowButton.addEventListener("click", () => addVariantRow());
 
 openProductModalButton.addEventListener("click", () => {
@@ -98,7 +95,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch(endpoint, {
       method,
       headers: {
-        "x-admin-token": tokenInput.value.trim()
+        "x-admin-token": getSavedToken()
       },
       body: formData
     });
@@ -120,39 +117,57 @@ form.addEventListener("submit", async (event) => {
 loadProducts();
 syncAdminControls();
 
-async function verifyAdminToken() {
-  const token = tokenInput.value.trim();
-  if (!token) {
-    isAdminAuthenticated = false;
-    syncAdminControls();
-    authMessage.textContent = "Masukkan token admin terlebih dahulu.";
+async function loginAdmin(event) {
+  if (event) event.preventDefault();
+
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!username || !password) {
+    authMessage.textContent = "Masukkan username dan password.";
     return;
   }
 
-  authMessage.textContent = "Memverifikasi token...";
+  authMessage.textContent = "Memverifikasi...";
 
   try {
-    const response = await fetch("/api/admin/verify", {
+    const response = await fetch("/api/admin/login", {
+      method: "POST",
       headers: {
-        "x-admin-token": token
-      }
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username, password })
     });
 
+    const result = await response.json();
+
     if (!response.ok) {
-      throw new Error("Token admin tidak valid.");
+      throw new Error(result.message || "Login gagal.");
     }
 
     isAdminAuthenticated = true;
+    sessionStorage.setItem("adminToken", result.token);
     syncAdminControls();
-    authMessage.textContent = "Token valid. Aksi produk dan order sudah aktif.";
-    connectOrderStream(token);
+    authMessage.textContent = "Login berhasil. Sesi aktif.";
+    connectOrderStream(result.token);
     loadOrders();
   } catch (error) {
     isAdminAuthenticated = false;
+    sessionStorage.removeItem("adminToken");
     disconnectOrderStream();
     syncAdminControls();
     authMessage.textContent = error.message;
   }
+}
+
+// Check session on load
+const savedToken = getSavedToken();
+if (savedToken) {
+  isAdminAuthenticated = true;
+  syncAdminControls();
+  authMessage.textContent = "Sesi aktif.";
+  connectOrderStream(savedToken);
+  loadOrders();
 }
 
 async function loadProducts() {
@@ -217,7 +232,7 @@ async function loadProducts() {
           const response = await fetch(`/api/products/${product.id}`, {
             method: "DELETE",
             headers: {
-              "x-admin-token": tokenInput.value.trim()
+              "x-admin-token": getSavedToken()
             }
           });
           const result = await response.json();
@@ -268,8 +283,17 @@ function closeProductModal() {
 function syncAdminControls() {
   openProductModalButton.disabled = !isAdminAuthenticated;
   submitProductButton.disabled = !isAdminAuthenticated;
-  verifyButton.textContent = isAdminAuthenticated ? "Token Aktif" : "Verifikasi Token";
-  verifyButton.classList.toggle("verified", isAdminAuthenticated);
+  
+  const adminSidebar = document.querySelector(".admin-sidebar");
+  const adminLayout = document.querySelector(".admin-layout");
+  
+  if (adminSidebar) {
+    adminSidebar.classList.toggle("hidden", isAdminAuthenticated);
+  }
+  if (adminLayout) {
+    adminLayout.classList.toggle("authenticated", isAdminAuthenticated);
+  }
+  
   loadProducts();
 }
 
@@ -341,12 +365,12 @@ function findLowestVariantPrice(variants) {
 }
 
 async function loadOrders(showLoadingState = true) {
-  const token = tokenInput.value.trim();
+  const token = getSavedToken();
 
   if (!isAdminAuthenticated || !token) {
-    adminOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
-    adminCompleteOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
-    adminDeniedOrderList.innerHTML = "<p>Masukkan token admin untuk melihat data checkout.</p>";
+    adminOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
+    adminCompleteOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
+    adminDeniedOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
     return;
   }
 
@@ -534,7 +558,7 @@ async function updateOrderStatus(orderId, status) {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-admin-token": tokenInput.value.trim()
+        "x-admin-token": getSavedToken()
       },
       body: JSON.stringify({ status })
     });
@@ -559,7 +583,7 @@ async function updatePaymentStatus(orderId, paymentStatus) {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-admin-token": tokenInput.value.trim()
+        "x-admin-token": getSavedToken()
       },
       body: JSON.stringify({ paymentStatus })
     });

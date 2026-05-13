@@ -395,7 +395,7 @@ textarea {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .cart-header,
@@ -422,6 +422,10 @@ textarea {
   display: grid;
   grid-template-columns: minmax(300px, 480px) 1fr;
   gap: 20px;
+}
+
+.admin-layout.authenticated {
+  grid-template-columns: 1fr;
 }
 
 .checkout-layout {

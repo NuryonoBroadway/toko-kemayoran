@@ -21,16 +21,20 @@
           <h2>Akses Admin</h2>
           <p class="muted">Masukkan token admin untuk mengelola produk dan order.</p>
         </div>
-        <div class="form-grid">
+        <form id="login-form" class="form-grid">
           <label class="full-width">
-            Token Admin
-            <input id="admin-token" type="password" placeholder="Masukkan token admin" required />
+            Username
+            <input id="admin-username" type="text" placeholder="Username" required />
+          </label>
+          <label class="full-width">
+            Password
+            <input id="admin-password" type="password" placeholder="Password" required />
           </label>
           <div class="full-width auth-row">
-            <p id="admin-auth-message" class="muted">Masukkan token admin untuk mengaktifkan aksi produk dan order.</p>
-            <button id="verify-admin-token" class="secondary-button" type="button">Verifikasi Token</button>
+            <p id="admin-auth-message" class="muted">Masukkan username dan password admin.</p>
+            <button id="login-button" class="secondary-button" type="submit">Login</button>
           </div>
-        </div>
+        </form>
       </section>
 
       <section class="admin-content">
@@ -117,7 +121,7 @@
           </div>
           <label class="full-width">
             Gambar
-            <input name="image" type="file" accept="image/*" />
+            <input name="image" type="file" accept="image/*" capture="environment" />
           </label>
           <div class="full-width form-actions">
             <button id="submit-product-button" class="primary-button" type="submit" disabled>Simpan Produk</button>
