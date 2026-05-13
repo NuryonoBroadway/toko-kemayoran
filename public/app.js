@@ -158,14 +158,22 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-item";
     row.innerHTML = `
-      <div class="cart-row">
-        <strong>${item.name}</strong>
-        <button class="icon-button" type="button">Hapus</button>
+      <div class="cart-item-row">
+        <div class="cart-item-left">
+          <span class="cart-item-title">${item.name}</span>
+          <div class="cart-item-actions">
+            <button class="cart-item-delete" type="button" aria-label="Hapus">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="cart-item-right">
+          <span class="cart-item-price">${formatCurrency(item.price * item.quantity)}</span>
+          <span class="cart-item-meta muted">${item.variantLabel} • Qty ${item.quantity}</span>
+        </div>
       </div>
-      <p class="muted">${item.variantLabel} • Qty ${item.quantity}</p>
-      <strong>${formatCurrency(item.price * item.quantity)}</strong>
     `;
-    row.querySelector("button").addEventListener("click", () => {
+    row.querySelector(".cart-item-delete").addEventListener("click", () => {
       cart = cart.filter((cartItem) => !(cartItem.id === item.id && cartItem.variantId === item.variantId));
       saveCart();
       renderCart();

@@ -414,8 +414,67 @@ textarea {
 .cart-item {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 12px;
+  padding: 16px;
   background: #fff;
+}
+
+.cart-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cart-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.cart-item-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cart-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cart-item-delete {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.16s;
+  border-radius: 4px;
+}
+
+.cart-item-delete:hover {
+  color: var(--text);
+  background: rgba(0,0,0,0.05);
+}
+
+.cart-item-right {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.cart-item-price {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cart-item-meta {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .admin-layout {
