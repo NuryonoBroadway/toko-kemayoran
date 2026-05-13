@@ -444,7 +444,7 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
       <div class="order-card-header">
         <div>
           <h4>${order.customerName}</h4>
-          <p class="muted">${formatDate(order.createdAt)} • ${order.status}</p>
+          <p class="muted">${formatDate(order.createdAt)} • ${order.status} • ID: ${order.id}</p>
         </div>
         <strong>${formatCurrency(order.total)}</strong>
       </div>
