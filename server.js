@@ -41,7 +41,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const requireAdmin = asyncHandler(async (req, res, next) => {
   const token = getAdminTokenFromRequest(req);
-  
+
   if (!token) {
     res.status(401).json({ message: "Token admin diperlukan." });
     return;
@@ -78,7 +78,7 @@ app.get("/api/admin/verify", requireAdmin, (_req, res) => {
 
 app.post("/api/admin/login", asyncHandler(async (req, res) => {
   const { username, password } = req.body;
-  
+
   if (!username || !password) {
     res.status(400).json({ message: "Username dan password wajib diisi." });
     return;
@@ -171,7 +171,7 @@ app.post("/api/products", requireAdmin, upload.single("image"), asyncHandler(asy
     res.status(201).json(product);
   } catch (error) {
     if (imageUrl) {
-      await deleteStorageObjectByPublicUrl(imageUrl).catch(() => {});
+      await deleteStorageObjectByPublicUrl(imageUrl).catch(() => { });
     }
     throw error;
   }
@@ -218,14 +218,14 @@ app.patch("/api/products/:id", requireAdmin, upload.single("image"), asyncHandle
     await replaceProductVariants(req.params.id, normalizedVariants);
 
     if (req.file && existingProduct.imageUrl) {
-      await deleteStorageObjectByPublicUrl(existingProduct.imageUrl).catch(() => {});
+      await deleteStorageObjectByPublicUrl(existingProduct.imageUrl).catch(() => { });
     }
 
     const product = await fetchProductById(req.params.id);
     res.json(product);
   } catch (error) {
     if (req.file && nextImageUrl && nextImageUrl !== existingProduct.imageUrl) {
-      await deleteStorageObjectByPublicUrl(nextImageUrl).catch(() => {});
+      await deleteStorageObjectByPublicUrl(nextImageUrl).catch(() => { });
     }
     throw error;
   }
@@ -296,7 +296,7 @@ app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, 
     res.status(201).json(order);
   } catch (error) {
     if (paymentProofUrl) {
-      await deleteStorageObjectByPublicUrl(paymentProofUrl).catch(() => {});
+      await deleteStorageObjectByPublicUrl(paymentProofUrl).catch(() => { });
     }
     throw error;
   }
@@ -309,7 +309,7 @@ app.get("/api/orders", requireAdmin, asyncHandler(async (_req, res) => {
 
 app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const allowedStatuses = ["Baru", "Diproses", "Selesai"];
+  const allowedStatuses = ["Baru", "Diproses", "Selesai", "Ditolak"];
 
   if (!allowedStatuses.includes(status)) {
     res.status(400).json({ message: "Status order tidak valid." });
@@ -325,7 +325,7 @@ app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) 
   const canProcessWithoutVerification =
     order.paymentMethod === "WhatsApp Penjual" && order.paymentStatus === "Menunggu Konfirmasi";
 
-  if (status !== "Baru" && order.paymentStatus !== "Sudah Dibayar" && !canProcessWithoutVerification) {
+  if ((status !== "Baru" && status !== "Ditolak") && order.paymentStatus !== "Sudah Dibayar" && !canProcessWithoutVerification) {
     res.status(400).json({ message: "Pembayaran belum diverifikasi." });
     return;
   }
@@ -400,7 +400,7 @@ app.delete("/api/products/:id", requireAdmin, asyncHandler(async (req, res) => {
   });
 
   if (product.imageUrl) {
-    await deleteStorageObjectByPublicUrl(product.imageUrl).catch(() => {});
+    await deleteStorageObjectByPublicUrl(product.imageUrl).catch(() => { });
   }
 
   res.json({ message: "Produk dihapus." });

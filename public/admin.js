@@ -521,6 +521,7 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
         btn.disabled = true;
         try {
           await updatePaymentStatus(order.id, "Ditolak");
+          await updateOrderStatus(order.id, "Ditolak");
           showNotification("Pembayaran ditolak.");
         } catch (error) {
           showNotification(error.message || "Gagal menolak pembayaran.");
