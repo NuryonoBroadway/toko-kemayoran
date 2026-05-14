@@ -23,6 +23,12 @@ const submitProductButton = document.getElementById("submit-product-button");
 const productModalTitle = document.getElementById("product-modal-title");
 const variantRows = document.getElementById("variant-rows");
 const addVariantRowButton = document.getElementById("add-variant-row");
+const adminProductCount = document.getElementById("admin-product-count");
+const adminTotalStock = document.getElementById("admin-total-stock");
+const adminActiveOrderCount = document.getElementById("admin-active-order-count");
+const adminCompleteOrderCount = document.getElementById("admin-complete-order-count");
+const adminProductToolbarCount = document.getElementById("admin-product-toolbar-count");
+const adminVariantToolbarCount = document.getElementById("admin-variant-toolbar-count");
 
 let isAdminAuthenticated = false;
 let orderEventSource = null;
@@ -196,41 +202,68 @@ async function loadProducts() {
     const products = (await response.json()).map(normalizeProduct);
 
     if (!products.length) {
+      updateProductSummaryMetrics([]);
       adminProductList.innerHTML = "<p>Belum ada produk.</p>";
       return;
     }
 
+    updateProductSummaryMetrics(products);
     adminProductList.innerHTML = "";
     products.forEach((product) => {
       const card = document.createElement("article");
       card.className = "admin-product-card";
+      const totalStock = sumVariantStock(product.variants);
+      const variantCount = product.variants.length;
+      const previewVariants = product.variants.slice(0, 3);
+      const hiddenVariantCount = Math.max(variantCount - previewVariants.length, 0);
       card.innerHTML = `
-        <img class="admin-product-image" src="${product.imageUrl || placeholderImage}" alt="${product.name}" />
+        <div class="admin-product-media">
+          <img class="admin-product-image" src="${product.imageUrl || placeholderImage}" alt="${product.name}" />
+          <div class="admin-product-media-overlay">
+            <span class="category-badge">${product.category}</span>
+            <span class="stock-badge">${totalStock} stok</span>
+          </div>
+        </div>
         <div class="admin-product-content">
-          <div class="admin-product-actions">
-            <h4>${product.name}</h4>
+          <div class="admin-product-header">
+            <div class="admin-product-title-group">
+              <h4>${product.name}</h4>
+              <p class="muted">${product.description || "Tidak ada deskripsi."}</p>
+            </div>
+            <div class="admin-product-price-box">
+              <span class="muted">Mulai dari</span>
+              <strong>${formatCurrency(findLowestVariantPrice(product.variants))}</strong>
+            </div>
+          </div>
+          <div class="admin-product-meta-row">
+            <span class="info-chip">${variantCount} varian</span>
+            <span class="info-chip">${totalStock} stok</span>
+          </div>
+          <div class="admin-variant-preview-list">
+            ${previewVariants
+              .map(
+                (variant) => `
+                  <div class="admin-variant-preview-card">
+                    <div class="admin-variant-preview-top">
+                      <strong>${variant.label}</strong>
+                      <span>${formatWeight(variant.weightGrams)}</span>
+                    </div>
+                    <div class="admin-variant-preview-bottom">
+                      <span>${formatCurrency(variant.price)}</span>
+                      <span>${variant.stock} stok</span>
+                    </div>
+                  </div>
+                `
+              )
+              .join("")}
+            ${hiddenVariantCount ? `<div class="admin-variant-more">+${hiddenVariantCount} varian lainnya</div>` : ""}
+          </div>
+          <div class="admin-product-footer">
             <div class="product-action-group">
               <button class="secondary-button product-edit-button" type="button" ${isAdminAuthenticated ? "" : "disabled"}>Edit</button>
               <button class="danger-button product-delete-button" type="button" ${isAdminAuthenticated ? "" : "disabled"}>Hapus</button>
             </div>
           </div>
-          <p class="muted">${product.category} • Total stok ${sumVariantStock(product.variants)}</p>
-          <div class="admin-variant-list">
-            ${product.variants
-              .map(
-                (variant) => `
-                  <div class="admin-variant-chip">
-                    <span>${variant.label}</span>
-                    <strong>${formatCurrency(variant.price)}</strong>
-                    <span>${variant.stock} stok</span>
-                    <span>${formatWeight(variant.weightGrams)}</span>
-                  </div>
-                `
-              )
-              .join("")}
-          </div>
-          <p class="muted">${product.description || "Tidak ada deskripsi."}</p>
-          <strong>${formatCurrency(findLowestVariantPrice(product.variants))}</strong>
         </div>
       `;
 
@@ -276,7 +309,30 @@ async function loadProducts() {
       adminProductList.appendChild(card);
     });
   } catch (_error) {
+    updateProductSummaryMetrics([]);
     adminProductList.innerHTML = "<p>Gagal memuat produk.</p>";
+  }
+}
+
+function updateProductSummaryMetrics(products) {
+  const totalProducts = products.length;
+  const totalStock = products.reduce((sum, product) => sum + sumVariantStock(product.variants), 0);
+  const totalVariants = products.reduce((sum, product) => sum + product.variants.length, 0);
+
+  if (adminProductCount) {
+    adminProductCount.textContent = String(totalProducts);
+  }
+
+  if (adminTotalStock) {
+    adminTotalStock.textContent = String(totalStock);
+  }
+
+  if (adminProductToolbarCount) {
+    adminProductToolbarCount.textContent = `${totalProducts} produk`;
+  }
+
+  if (adminVariantToolbarCount) {
+    adminVariantToolbarCount.textContent = `${totalVariants} varian`;
   }
 }
 
@@ -414,6 +470,12 @@ async function loadOrders(showLoadingState = true) {
   const token = getSavedToken();
 
   if (!isAdminAuthenticated || !token) {
+    if (adminActiveOrderCount) {
+      adminActiveOrderCount.textContent = "0";
+    }
+    if (adminCompleteOrderCount) {
+      adminCompleteOrderCount.textContent = "0";
+    }
     adminOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
     adminCompleteOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
     adminDeniedOrderList.innerHTML = "<p>Silakan login untuk melihat data checkout.</p>";
@@ -450,10 +512,23 @@ async function loadOrders(showLoadingState = true) {
     const completedOrders = orders.filter((order) => order.status === "Selesai");
     const deniedOrders = orders.filter((order) => order.paymentStatus === "Ditolak");
 
+    if (adminActiveOrderCount) {
+      adminActiveOrderCount.textContent = String(activeOrders.length);
+    }
+    if (adminCompleteOrderCount) {
+      adminCompleteOrderCount.textContent = String(completedOrders.length);
+    }
+
     renderOrderSection(adminOrderList, activeOrders, false);
     renderOrderSection(adminCompleteOrderList, completedOrders, true);
     renderOrderSection(adminDeniedOrderList, deniedOrders, true, true);
   } catch (error) {
+    if (adminActiveOrderCount) {
+      adminActiveOrderCount.textContent = "0";
+    }
+    if (adminCompleteOrderCount) {
+      adminCompleteOrderCount.textContent = "0";
+    }
     adminOrderList.innerHTML = `<p>${error.message}</p>`;
     adminCompleteOrderList.innerHTML = `<p>${error.message}</p>`;
     adminDeniedOrderList.innerHTML = `<p>${error.message}</p>`;
