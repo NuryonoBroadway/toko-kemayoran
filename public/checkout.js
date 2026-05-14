@@ -247,44 +247,24 @@ async function searchLocations(keyword) {
       destinationSearchResults.appendChild(button);
     });
   } catch (error) {
-    destinationSearchResults.innerHTML = `<div class="location-search-state">${error.message}</div>`;
+    destinationSearchResults.innerHTML = `<div class="location-search-state">Lokasi tidak ditemukan</div>`;
   }
 }
 
 function renderSelectedDestination() {
-  const searchLabel = destinationSearchInput.closest("label");
   if (!selectedDestination) {
     selectedDestinationContainer.classList.add("hidden");
     selectedDestinationContainer.innerHTML = "";
-    if (searchLabel) searchLabel.classList.remove("hidden");
     return;
   }
 
-  if (searchLabel) searchLabel.classList.add("hidden");
+  // Jangan sembunyikan bar pencarian (searchLabel), biarkan tetap terlihat
   selectedDestinationContainer.classList.remove("hidden");
   selectedDestinationContainer.innerHTML = `
-    <div class="selected-destination-card">
-      <div>
-        <strong>${selectedDestination.label}</strong>
-      </div>
-      <button id="clear-destination-button" class="secondary-button" type="button">Ganti</button>
+    <div class="selected-destination-info">
+      <span class="info-chip success">Lokasi Terpilih: ${selectedDestination.label}</span>
     </div>
   `;
-
-  selectedDestinationContainer.querySelector("#clear-destination-button").addEventListener("click", () => {
-    selectedDestination = null;
-    selectedCourierCode = "";
-    selectedShippingOption = null;
-    shippingOptions = [];
-    destinationSearchInput.value = "";
-    destinationSearchResults.innerHTML = "";
-    destinationSearchResults.classList.add("hidden");
-    renderSelectedDestination();
-    renderCourierPicker();
-    renderShippingOptions();
-    // Beri focus kembali ke input setelah ganti diklik
-    setTimeout(() => destinationSearchInput.focus(), 50);
-  });
 }
 
 function renderCourierPicker() {
@@ -515,10 +495,19 @@ async function fetchShippingOptions() {
   } catch (error) {
     shippingOptions = [];
     selectedShippingOption = null;
-    shippingOptionsContainer.innerHTML = `<p>${error.message}</p>`;
-    checkoutMessage.textContent = error.message;
+    shippingOptionsContainer.innerHTML = `
+      <div class="shipping-error-box">
+        <p class="muted">${error.message}</p>
+        <button id="retry-shipping-button" class="secondary-button" type="button" style="margin-top: 8px;">Coba Lagi</button>
+      </div>
+    `;
     renderCourierPicker();
     updateTotals();
+
+    const retryBtn = document.getElementById("retry-shipping-button");
+    if (retryBtn) {
+      retryBtn.addEventListener("click", fetchShippingOptions);
+    }
   }
 }
 
@@ -630,7 +619,7 @@ function formatWeight(value) {
     return "0 g";
   }
 
-  if (grams >= 1000 && grams % 1000 === 0) {
+  if (grams >= 1000) {
     return `${grams / 1000} kg`;
   }
 
