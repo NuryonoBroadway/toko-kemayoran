@@ -109,10 +109,6 @@ checkoutForm.addEventListener("submit", async (event) => {
   checkoutMessage.textContent = "Mengirim pesanan...";
   const formData = new FormData(checkoutForm);
   const selectedPaymentMethod = getSelectedPaymentMethod();
-  const pendingWhatsAppWindow =
-    selectedPaymentMethod === "WhatsApp Penjual" && paymentInfo?.sellerWhatsAppNumber
-      ? window.open("about:blank", "_blank")
-      : null;
 
   const addressDetail = document.getElementById("address-detail").value.trim();
   const fullAddress = `${addressDetail}, ${selectedDestination.label}`;
@@ -159,19 +155,15 @@ checkoutForm.addEventListener("submit", async (event) => {
     const result = await response.json();
 
     if (!response.ok) {
-      if (pendingWhatsAppWindow) {
-        pendingWhatsAppWindow.close();
-      }
       throw new Error(result.message || "Checkout gagal.");
     }
 
     if (selectedPaymentMethod === "WhatsApp Penjual" && paymentInfo?.sellerWhatsAppNumber) {
       const targetUrl = buildWhatsAppUrl(paymentInfo.sellerWhatsAppNumber, result);
-      if (pendingWhatsAppWindow) {
-        pendingWhatsAppWindow.location.href = targetUrl;
-      } else {
-        window.open(targetUrl, "_blank");
-      }
+      localStorage.removeItem("cart");
+      sessionStorage.setItem("pendingToast", `Pesanan berhasil dibuat. ID: ${result.id}`);
+      window.location.href = targetUrl;
+      return;
     }
 
     localStorage.removeItem("cart");
@@ -189,9 +181,6 @@ checkoutForm.addEventListener("submit", async (event) => {
     sessionStorage.setItem("pendingToast", `Pesanan berhasil dibuat. ID: ${result.id}`);
     window.location.href = "/";
   } catch (error) {
-    if (pendingWhatsAppWindow) {
-      pendingWhatsAppWindow.close();
-    }
     checkoutMessage.textContent = error.message;
     submitButton.textContent = originalText;
     submitButton.disabled = false;
