@@ -18,6 +18,7 @@ const binderbyteCouriers = String(process.env.BINDERBYTE_COURIERS || "jne,sicepa
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
+const useApiCoIdKey = process.env.USE_API_CO_ID_KEY || "ZOSOWwmrGkROCwcDQrqnENd48qT9fMtoMW6uI9CM6o6FhdbDKE";
 const supabaseUrl = requireEnv("SUPABASE_URL").replace(/\/+$/, "");
 const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
@@ -107,8 +108,8 @@ app.get("/api/wilayah/villages/:districtId", asyncHandler(async (req, res) => {
 app.get("/api/locations/search", asyncHandler(async (req, res) => {
   const search = String(req.query.search || "").trim();
 
-  if (!binderbyteApiKey) {
-    res.status(500).json({ message: "BINDERBYTE_API_KEY belum diatur." });
+  if (!useApiCoIdKey) {
+    res.status(500).json({ message: "USE_API_CO_ID_KEY belum diatur." });
     return;
   }
 
@@ -117,127 +118,108 @@ app.get("/api/locations/search", asyncHandler(async (req, res) => {
     return;
   }
 
-  const url = new URL("https://api.binderbyte.com/v1/locations");
-  url.searchParams.set("api_key", binderbyteApiKey);
-  url.searchParams.set("search", search);
+  const url = new URL("https://use.api.co.id/regional/indonesia/villages");
+  url.searchParams.set("name", search);
+  url.searchParams.set("page", "1");
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      "accept": "application/json",
+      "x-api-co-id": useApiCoIdKey
+    }
+  });
   const data = await parseResponseBody(response);
-  const isSuccess =
-    response.ok &&
-    String(data?.code || "") === "200" &&
-    Array.isArray(data?.data);
+  const isSuccess = response.ok && data?.is_success === true && Array.isArray(data?.data);
 
   if (!isSuccess) {
     res.status(400).json({ message: data?.message || "Gagal mencari lokasi." });
     return;
   }
 
-  res.json(data.data.map((entry) => ({
-    id: String(entry.id || "").trim(),
-    type: String(entry.type || "").trim(),
-    label: String(entry.label || "").trim(),
-    destinationQuery: buildDestinationQueryFromLocationLabel(entry.label)
-  })));
+  res.json(data.data.map((entry) => {
+    const label = [entry.name, entry.district, entry.regency, entry.province]
+      .map(v => String(v || "").trim())
+      .filter(Boolean)
+      .join(", ");
+    
+    return {
+      id: String(entry.code || "").trim(),
+      type: "village",
+      label: label,
+      destinationQuery: `${entry.district}, ${entry.regency}`
+    };
+  }));
 }));
 
 app.post("/api/shipping/options", asyncHandler(async (req, res) => {
   const {
-    destinationRegencyName,
-    destinationDistrictName,
     destinationId,
-    destinationQuery,
-    weightGrams,
-    couriers,
-    courierCode
+    weightGrams
   } = req.body || {};
 
   const normalizedWeightGrams = Number(weightGrams);
-  const normalizedCourierCode = String(courierCode || "").trim().toLowerCase();
-  const requestedCouriers = Array.isArray(couriers)
-    ? couriers.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
-    : [];
-  const activeCouriers = normalizedCourierCode
-    ? [normalizedCourierCode]
-    : requestedCouriers.length
-      ? requestedCouriers
-      : binderbyteCouriers;
 
-  if (!binderbyteApiKey) {
-    res.status(500).json({ message: "BINDERBYTE_API_KEY belum diatur." });
+  if (!useApiCoIdKey) {
+    res.status(500).json({ message: "USE_API_CO_ID_KEY belum diatur." });
     return;
   }
 
-  if (!binderbyteOrigin) {
-    res.status(500).json({ message: "BINDERBYTE_ORIGIN belum diatur." });
+  // Gunakan origin dari env (biasanya BINDERBYTE_ORIGIN atau tambahkan baru)
+  const originRaw = process.env.BINDERBYTE_ORIGIN || "";
+  const originCode = originRaw.replace("village_", "").replace(/\./g, "").trim();
+
+  if (!originCode) {
+    res.status(500).json({ message: "Origin pengiriman belum dikonfigurasi (SHIPPING_ORIGIN_CODE)." });
     return;
   }
 
-  if ((!destinationId && !destinationQuery && !destinationRegencyName) || Number.isNaN(normalizedWeightGrams) || normalizedWeightGrams <= 0) {
+  const destinationCode = String(destinationId || "").trim();
+  if (!destinationCode || Number.isNaN(normalizedWeightGrams) || normalizedWeightGrams <= 0) {
     res.status(400).json({ message: "Tujuan pengiriman dan berat pesanan wajib valid." });
     return;
   }
 
-  if (!activeCouriers.length) {
-    res.status(400).json({ message: "Belum ada ekspedisi yang dikonfigurasi." });
+  let weightKg = Math.max(1, Math.ceil(normalizedWeightGrams / 1000));
+
+  const url = new URL("https://use.api.co.id/expedition/shipping-cost");
+  url.searchParams.set("origin_village_code", originCode);
+  url.searchParams.set("destination_village_code", destinationCode);
+  url.searchParams.set("weight", String(weightKg));
+
+  const response = await fetch(url, {
+    headers: {
+      "accept": "application/json",
+      "x-api-co-id": useApiCoIdKey
+    }
+  });
+  const data = await parseResponseBody(response);
+
+  if (!response.ok || data?.is_success !== true) {
+    const message = data?.message || "Gagal mengambil ongkir.";
+    res.status(400).json({ message });
     return;
   }
 
-  const destination = String(destinationId || "").trim() || String(destinationQuery || "").trim() || [destinationDistrictName, destinationRegencyName]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(", ");
+  const results = data.data?.couriers || [];
+  const options = results.map((item) => ({
+    courierCode: String(item.courier_code || "").trim().toLowerCase(),
+    courierName: String(item.courier_name || "").trim(),
+    service: String(item.courier_name || "").trim(),
+    description: "",
+    etd: String(item.estimation || "").trim(),
+    cost: Number(item.price || 0)
+  })).filter(opt => opt.cost > 0);
 
-  let weightKg = Math.max(1, Math.ceil(normalizedWeightGrams / 1000));
-  if (weightKg < 1) {
-    weightKg = 1
-  }
-
-  const payload = new URLSearchParams({
-    api_key: binderbyteApiKey,
-    origin: binderbyteOrigin,
-    destination,
-    courier: activeCouriers.join(","),
-    weight: String(weightKg)
-  });
-
-  const binderbyteResponse = await fetch("https://api.binderbyte.com/v1/cost", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: payload.toString()
-  });
-  const binderbyteData = await parseResponseBody(binderbyteResponse);
-
-  if (!binderbyteResponse.ok || String(binderbyteData?.code || "") !== "200") {
-    const message = binderbyteData?.message || "Gagal mengambil ongkir dari BinderByte.";
-    throw new Error(message);
-  }
-
-  const options = Array.isArray(binderbyteData?.data?.results)
-    ? binderbyteData.data.results.flatMap((courierEntry) => {
-      const courierName = String(courierEntry.name || "").trim() || courierEntry.code;
-      return Array.isArray(courierEntry.costs)
-        ? courierEntry.costs.map((service) => ({
-          courierCode: String(courierEntry.code || "").trim().toLowerCase(),
-          courierName,
-          service: String(service.service || service.type || "").trim(),
-          description: String(service.description || service.name || "").trim(),
-          etd: String(service.etd || service.estimated || "").trim(),
-          cost: Number(service.cost || service.price || 0)
-        }))
-        : [];
-    }).filter((entry) => entry.service && entry.cost > 0)
-    : [];
+  const filteredOptions = options.filter(opt => 
+    binderbyteCouriers.some(c => opt.courierCode.toLowerCase() == c.toLowerCase())
+  );
 
   res.json({
-    origin: binderbyteData.data.origin,
-    destination: binderbyteData.data.destination,
+    origin: originCode,
+    destination: destinationCode,
     weightKg,
     weightGrams: normalizedWeightGrams,
-    couriers: activeCouriers,
-    options: options.sort((left, right) => left.cost - right.cost)
+    options: filteredOptions.sort((left, right) => left.cost - right.cost)
   });
 }));
 

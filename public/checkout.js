@@ -11,8 +11,6 @@ const destinationSearchInput = document.getElementById("destination-search-input
 const destinationSearchResults = document.getElementById("destination-search-results");
 const selectedDestinationContainer = document.getElementById("selected-destination");
 const shippingOptionsContainer = document.getElementById("shipping-options");
-const shippingWeightBadge = document.getElementById("shipping-weight-badge");
-const refreshShippingButton = document.getElementById("refresh-shipping-button");
 const courierPicker = document.getElementById("courier-picker");
 
 let paymentInfo = null;
@@ -63,16 +61,6 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".location-search-box")) {
     destinationSearchResults.classList.add("hidden");
   }
-});
-
-refreshShippingButton.addEventListener("click", async () => {
-  if (!canCalculateShipping()) {
-    checkoutMessage.textContent = "Pilih lokasi tujuan dan kurir lebih dulu untuk cek ongkir.";
-    return;
-  }
-
-  checkoutMessage.textContent = "";
-  await fetchShippingOptions();
 });
 
 paymentMethodInputs.forEach((input) => {
@@ -252,9 +240,9 @@ async function searchLocations(keyword) {
         selectedShippingOption = null;
         renderSelectedDestination();
         renderShippingOptions();
-        if (selectedCourierCode) {
-          fetchShippingOptions();
-        }
+
+        // Selalu fetch ongkir setelah lokasi dipilih untuk mengetahui kurir yang tersedia
+        fetchShippingOptions();
       });
       destinationSearchResults.appendChild(button);
     });
@@ -264,12 +252,15 @@ async function searchLocations(keyword) {
 }
 
 function renderSelectedDestination() {
+  const searchLabel = destinationSearchInput.closest("label");
   if (!selectedDestination) {
     selectedDestinationContainer.classList.add("hidden");
     selectedDestinationContainer.innerHTML = "";
+    if (searchLabel) searchLabel.classList.remove("hidden");
     return;
   }
 
+  if (searchLabel) searchLabel.classList.add("hidden");
   selectedDestinationContainer.classList.remove("hidden");
   selectedDestinationContainer.innerHTML = `
     <div class="selected-destination-card">
@@ -282,46 +273,82 @@ function renderSelectedDestination() {
 
   selectedDestinationContainer.querySelector("#clear-destination-button").addEventListener("click", () => {
     selectedDestination = null;
+    selectedCourierCode = "";
     selectedShippingOption = null;
     shippingOptions = [];
     destinationSearchInput.value = "";
+    destinationSearchResults.innerHTML = "";
+    destinationSearchResults.classList.add("hidden");
     renderSelectedDestination();
+    renderCourierPicker();
     renderShippingOptions();
+    // Beri focus kembali ke input setelah ganti diklik
+    setTimeout(() => destinationSearchInput.focus(), 50);
   });
 }
 
 function renderCourierPicker() {
+  if (!selectedDestination) {
+    courierPicker.innerHTML = "";
+    return;
+  }
+
   if (!paymentInfo?.availableCouriers?.length) {
     courierPicker.innerHTML = "<p class=\"muted\">Belum ada kurir yang dikonfigurasi.</p>";
     return;
   }
 
-  courierPicker.innerHTML = paymentInfo.availableCouriers
-    .map((code) => {
-      const active = code === selectedCourierCode;
+  if (!shippingOptions.length && selectedDestination) {
+    courierPicker.innerHTML = "<p class=\"muted\">Tidak ada kurir yang tersedia untuk rute ini.</p>";
+    return;
+  }
+
+  // Ambil unik kurir dari hasil API (agar tidak ada chip duplikat jika satu kurir punya banyak layanan)
+  const uniqueCouriers = [];
+  const seenCodes = new Set();
+
+  shippingOptions.forEach(opt => {
+    if (!seenCodes.has(opt.courierCode)) {
+      // Opsi tambahan: Cek apakah kurir ini ada di config .env (paymentInfo.availableCouriers)
+      const isAllowed = paymentInfo.availableCouriers.some(c => opt.courierCode.toLowerCase().includes(c.toLowerCase()));
+
+      if (isAllowed) {
+        seenCodes.add(opt.courierCode);
+        uniqueCouriers.push({
+          code: opt.courierCode,
+          name: opt.courierName
+        });
+      }
+    }
+  });
+
+  courierPicker.innerHTML = uniqueCouriers
+    .map((courier) => {
+      const active = courier.code === selectedCourierCode;
       return `
         <button
           type="button"
           class="courier-chip${active ? " selected" : ""}"
-          data-courier-code="${code}"
+          data-courier-code="${courier.code}"
         >
-          ${formatCourierName(code)}
+          ${courier.name}
         </button>
       `;
     })
     .join("");
 
   courierPicker.querySelectorAll("[data-courier-code]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       selectedCourierCode = button.dataset.courierCode || "";
-      selectedShippingOption = null;
-      shippingOptions = [];
+
+      // Auto-select opsi pertama untuk kurir yang baru dipilih
+      const filtered = shippingOptions.filter(opt =>
+        opt.courierCode.toLowerCase() === selectedCourierCode.toLowerCase()
+      );
+      selectedShippingOption = filtered.length > 0 ? filtered[0] : null;
+
       renderCourierPicker();
       renderShippingOptions();
-
-      if (selectedDestination) {
-        await fetchShippingOptions();
-      }
     });
   });
 }
@@ -361,9 +388,8 @@ function buildWhatsAppUrl(number, order) {
   const itemLines = order.items
     .map((item) => `- ${item.name} ${item.variantLabel ? `(${item.variantLabel}) ` : ""}x${item.quantity} (${formatCurrency(item.subtotal)})`)
     .join("\n");
-  const courierLabel = [order.shippingCourierName, order.shippingService].filter(Boolean).join(" ");
-  const shippingLine = courierLabel
-    ? `Pengiriman: ${courierLabel}`
+  const shippingLine = order.shippingCourierName
+    ? `Pengiriman: ${order.shippingCourierName}`
     : "Pengiriman: Ongkir akan dikonfirmasi penjual";
   const shippingCostLine =
     Number(order.shippingCost || 0) > 0
@@ -389,13 +415,12 @@ function buildWhatsAppUrl(number, order) {
 
 function renderCheckout() {
   checkoutItems.innerHTML = "";
-  shippingWeightBadge.textContent = formatWeight(getCartWeightGrams());
-
   if (!cart.length) {
     checkoutItems.innerHTML = "<p>Keranjang masih kosong. Tambahkan produk dari halaman toko.</p>";
     checkoutSummary.textContent = "0 item";
     document.getElementById("checkout-subtotal").textContent = formatCurrency(0);
     document.getElementById("checkout-shipping").textContent = "Belum dipilih";
+    document.getElementById("checkout-weight").textContent = "0 g";
     checkoutTotal.textContent = formatCurrency(0);
     renderShippingOptions();
     return;
@@ -429,6 +454,7 @@ function updateTotals() {
   const total = subtotal + shippingCost;
 
   document.getElementById("checkout-subtotal").textContent = formatCurrency(subtotal);
+  document.getElementById("checkout-weight").textContent = formatWeight(getCartWeightGrams());
   document.getElementById("checkout-shipping").textContent = selectedShippingOption
     ? formatCurrency(shippingCost)
     : "Belum dipilih";
@@ -436,14 +462,12 @@ function updateTotals() {
 }
 
 async function fetchShippingOptions() {
-  if (!canCalculateShipping()) {
+  if (!selectedDestination || getCartWeightGrams() <= 0) {
     renderShippingOptions();
     return;
   }
 
-  shippingOptionsContainer.innerHTML = "<p>Memuat ongkir...</p>";
-  refreshShippingButton.disabled = true;
-
+  shippingOptionsContainer.innerHTML = "<p class=\"muted\">Memuat ongkir...</p>";
   try {
     const response = await fetch("/api/shipping/options", {
       method: "POST",
@@ -464,16 +488,37 @@ async function fetchShippingOptions() {
     }
 
     shippingOptions = result.options || [];
-    selectedShippingOption = shippingOptions[0] || null;
+
+    // Jika belum ada kurir yang dipilih, pilih kurir pertama yang tersedia dari API
+    if (!selectedCourierCode && shippingOptions.length > 0) {
+      selectedCourierCode = shippingOptions[0].courierCode;
+    }
+
+    // Jika kurir terpilih tidak lagi tersedia di hasil terbaru, reset pilihan kurir
+    if (selectedCourierCode) {
+      const isStillAvailable = shippingOptions.some(opt => opt.courierCode.toLowerCase() === selectedCourierCode.toLowerCase());
+      if (!isStillAvailable) {
+        selectedCourierCode = shippingOptions.length > 0 ? shippingOptions[0].courierCode : null;
+      }
+    }
+
+    // Selalu pastikan opsi pertama dipilih untuk kurir aktif jika belum ada pilihan
+    if (selectedCourierCode && !selectedShippingOption) {
+      const filtered = shippingOptions.filter(opt => opt.courierCode.toLowerCase() === selectedCourierCode.toLowerCase());
+      if (filtered.length > 0) {
+        selectedShippingOption = filtered[0];
+      }
+    }
+
+    renderCourierPicker();
     renderShippingOptions();
   } catch (error) {
     shippingOptions = [];
     selectedShippingOption = null;
     shippingOptionsContainer.innerHTML = `<p>${error.message}</p>`;
     checkoutMessage.textContent = error.message;
+    renderCourierPicker();
     updateTotals();
-  } finally {
-    refreshShippingButton.disabled = false;
   }
 }
 
@@ -486,7 +531,7 @@ function renderShippingOptions() {
   }
 
   if (!selectedDestination) {
-    shippingOptionsContainer.innerHTML = "<p class=\"muted\">Cari lalu pilih lokasi tujuan untuk melihat ongkir.</p>";
+    shippingOptionsContainer.innerHTML = "";
     return;
   }
 
@@ -502,17 +547,34 @@ function renderShippingOptions() {
     return;
   }
 
+  const filteredOptions = shippingOptions.filter(option => {
+    if (!selectedCourierCode) return true;
+    return option.courierCode.toLowerCase() === selectedCourierCode.toLowerCase();
+  });
+
+  if (!filteredOptions.length) {
+    shippingOptionsContainer.innerHTML = canSubmitWithoutShipping()
+      ? "<p class=\"muted\">Belum ada layanan ongkir untuk kurir ini. Anda tetap bisa checkout lewat WhatsApp agar ongkir dikonfirmasi manual oleh penjual.</p>"
+      : "<p class=\"muted\">Layanan ongkir tidak tersedia untuk kurir yang dipilih. Klik Cek Ongkir atau pilih kurir lain.</p>";
+    return;
+  }
+
   shippingOptionsContainer.innerHTML = "";
 
-  shippingOptions.forEach((option) => {
+  filteredOptions.forEach((option) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `shipping-option-card${selectedShippingOption?.courierCode === option.courierCode && selectedShippingOption?.service === option.service ? " selected" : ""}`;
+
+    // Hilangkan baris muted jika nama servis sama dengan nama kurir agar tidak duplikat
+    const showService = option.service && option.service !== option.courierName;
+    const serviceHtml = showService ? `<div class="muted">${option.service}${option.description ? ` • ${option.description}` : ""}</div>` : "";
+
     button.innerHTML = `
       <div class="shipping-option-top">
         <div>
           <strong>${option.courierName}</strong>
-          <div class="muted">${option.service}${option.description ? ` • ${option.description}` : ""}</div>
+          ${serviceHtml}
         </div>
         <strong>${formatCurrency(option.cost)}</strong>
       </div>
@@ -586,13 +648,15 @@ function formatCourierName(code) {
   const value = String(code || "").trim().toLowerCase();
   const map = {
     jne: "JNE",
+    jnecargo: "JNE Cargo",
     sicepat: "SiCepat",
     pos: "POS",
     tiki: "TIKI",
     anteraja: "AnterAja",
     ninja: "Ninja",
     lion: "Lion",
-    sap: "SAP"
+    sap: "SAP",
+    jt: "J&T Express"
   };
 
   return map[value] || value.toUpperCase();
