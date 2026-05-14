@@ -170,7 +170,7 @@ checkoutForm.addEventListener("submit", async (event) => {
       if (pendingWhatsAppWindow) {
         pendingWhatsAppWindow.location.href = targetUrl;
       } else {
-        window.location.href = targetUrl;
+        window.open(targetUrl, "_blank");
       }
     }
 

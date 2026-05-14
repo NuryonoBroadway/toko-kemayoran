@@ -181,6 +181,13 @@ textarea {
   background: var(--surface-soft);
 }
 
+.whatsapp-indicator {
+  margin-top: 10px;
+  border-color: rgba(13, 107, 77, 0.18);
+  background: #f5fbf8;
+  color: #0d6b4d;
+}
+
 .catalog {
   padding: 24px;
 }
