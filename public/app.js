@@ -89,7 +89,7 @@ function renderProducts() {
     product.variants.forEach((variant) => {
       const option = document.createElement("option");
       option.value = variant.id;
-      option.textContent = `${formatVariantLabel(variant.label)} - ${formatCurrency(variant.price)} (${variant.stock} stok)`;
+      option.textContent = `${formatVariantLabel(variant.label)} - ${formatCurrency(variant.price)} (${variant.stock} stok • ${formatWeight(variant.weightGrams)})`;
       option.disabled = variant.stock === 0;
       variantSelect.appendChild(option);
     });
@@ -143,6 +143,7 @@ function addToCart(product, variant) {
       variantLabel: variant.label,
       name: product.name,
       price: variant.price,
+      weightGrams: variant.weightGrams,
       quantity: 1,
       imageUrl: product.imageUrl || placeholderImage
     });
@@ -271,7 +272,8 @@ function normalizeProduct(product) {
           id: "default",
           label: "Reguler",
           price: Number(product.price || 0),
-          stock: Number(product.stock || 0)
+          stock: Number(product.stock || 0),
+          weightGrams: Number(product.weightGrams || 250)
         }
       ];
 
@@ -293,7 +295,18 @@ function normalizeCart(currentCart, availableProducts) {
   return currentCart
     .map((item) => {
       if (item.variantId) {
-        return item;
+        if (item.weightGrams) {
+          return item;
+        }
+
+        const product = availableProducts.find((entry) => entry.id === item.id);
+        const variant = product?.variants?.find((entry) => entry.id === item.variantId);
+        return {
+          ...item,
+          variantLabel: item.variantLabel || formatVariantLabel(variant?.label),
+          price: Number(item.price || variant?.price || 0),
+          weightGrams: Number(variant?.weightGrams || 250)
+        };
       }
 
       const product = availableProducts.find((entry) => entry.id === item.id);
@@ -306,7 +319,8 @@ function normalizeCart(currentCart, availableProducts) {
         ...item,
         variantId: fallbackVariant.id,
         variantLabel: formatVariantLabel(fallbackVariant.label),
-        price: fallbackVariant.price
+        price: fallbackVariant.price,
+        weightGrams: fallbackVariant.weightGrams
       };
     })
     .filter(Boolean);
@@ -367,6 +381,19 @@ function showNotification(message, duration = 2000) {
       notification.remove();
     }, 500);
   }, duration);
+}
+
+function formatWeight(value) {
+  const grams = Number(value || 0);
+  if (!grams) {
+    return "-";
+  }
+
+  if (grams >= 1000 && grams % 1000 === 0) {
+    return `${grams / 1000} kg`;
+  }
+
+  return `${grams} g`;
 }
 
 function flyToCart(buttonElement) {

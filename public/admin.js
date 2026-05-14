@@ -72,7 +72,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!isAdminAuthenticated) {
-    formMessage.textContent = "Verifikasi token admin terlebih dahulu.";
+    formMessage.textContent = "Login admin terlebih dahulu.";
     return;
   }
 
@@ -223,6 +223,7 @@ async function loadProducts() {
                     <span>${variant.label}</span>
                     <strong>${formatCurrency(variant.price)}</strong>
                     <span>${variant.stock} stok</span>
+                    <span>${formatWeight(variant.weightGrams)}</span>
                   </div>
                 `
               )
@@ -286,7 +287,7 @@ function prepareCreateMode() {
   submitProductButton.textContent = "Upload Produk";
   formMessage.textContent = "";
   variantRows.innerHTML = "";
-  addVariantRow({ label: "1/4 kg", price: "", stock: "" });
+  addVariantRow({ label: "1/4 kg", price: "", stock: "", weightGrams: 250 });
 }
 
 function prepareEditMode(product) {
@@ -340,6 +341,10 @@ function addVariantRow(variant = {}) {
       Stok
       <input class="variant-stock-input" type="number" min="0" placeholder="10" value="${variant.stock ?? ""}" />
     </label>
+    <label>
+      Berat (gram)
+      <input class="variant-weight-input" type="number" min="1" step="1" placeholder="250" value="${variant.weightGrams ?? ""}" />
+    </label>
     <button class="danger-button variant-remove-button" type="button">Hapus</button>
   `;
 
@@ -359,9 +364,10 @@ function collectVariants() {
       id: row.querySelector(".variant-id-input").value.trim(),
       label: row.querySelector(".variant-label-input").value.trim(),
       price: Number(row.querySelector(".variant-price-input").value),
-      stock: Number(row.querySelector(".variant-stock-input").value)
+      stock: Number(row.querySelector(".variant-stock-input").value),
+      weightGrams: Number(row.querySelector(".variant-weight-input").value)
     }))
-    .filter((variant) => variant.label && variant.price > 0 && variant.stock >= 0);
+    .filter((variant) => variant.label && variant.price > 0 && variant.stock >= 0 && variant.weightGrams > 0);
 }
 
 function normalizeProduct(product) {
@@ -372,7 +378,8 @@ function normalizeProduct(product) {
           id: "default",
           label: "Reguler",
           price: Number(product.price || 0),
-          stock: Number(product.stock || 0)
+          stock: Number(product.stock || 0),
+          weightGrams: Number(product.weightGrams || 250)
         }
       ];
 
@@ -388,6 +395,19 @@ function sumVariantStock(variants) {
 
 function findLowestVariantPrice(variants) {
   return Math.min(...variants.map((variant) => Number(variant.price || 0)));
+}
+
+function formatWeight(value) {
+  const grams = Number(value || 0);
+  if (!grams) {
+    return "-";
+  }
+
+  if (grams >= 1000 && grams % 1000 === 0) {
+    return `${grams / 1000} kg`;
+  }
+
+  return `${grams} g`;
 }
 
 async function loadOrders(showLoadingState = true) {
@@ -485,6 +505,14 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
           <span class="muted">Pengirim</span>
           <strong>${order.senderName || "-"}</strong>
         </div>
+        <div>
+          <span class="muted">Pengiriman</span>
+          <strong>${formatShippingLabel(order)}</strong>
+        </div>
+        <div>
+          <span class="muted">Estimasi</span>
+          <strong>${order.shippingEtd || "-"}</strong>
+        </div>
       </div>
       <p class="muted">${order.transferNote || "Tanpa catatan transfer."}</p>
       ${
@@ -503,6 +531,14 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
           `
           )
           .join("")}
+        <div class="cart-row order-summary-row">
+          <span>Subtotal Produk</span>
+          <strong>${formatCurrency(order.subtotal || sumOrderItems(order.items))}</strong>
+        </div>
+        <div class="cart-row order-summary-row">
+          <span>Ongkir</span>
+          <strong>${formatCurrency(order.shippingCost || 0)}</strong>
+        </div>
       </div>
       <p class="muted">${order.notes || "Tanpa catatan."}</p>
       ${
@@ -609,7 +645,7 @@ function disconnectOrderStream() {
 
 async function updateOrderStatus(orderId, status) {
   if (!isAdminAuthenticated) {
-    alert("Verifikasi token admin terlebih dahulu.");
+    alert("Login admin terlebih dahulu.");
     return;
   }
 
@@ -634,7 +670,7 @@ async function updateOrderStatus(orderId, status) {
 
 async function updatePaymentStatus(orderId, paymentStatus) {
   if (!isAdminAuthenticated) {
-    alert("Verifikasi token admin terlebih dahulu.");
+    alert("Login admin terlebih dahulu.");
     return;
   }
 
@@ -703,4 +739,15 @@ function showNotification(message, duration = 2000) {
       notification.remove();
     }, 500);
   }, duration);
+}
+
+function formatShippingLabel(order) {
+  const parts = [order.shippingCourierName, order.shippingService].filter(Boolean);
+  return parts.length ? parts.join(" ") : "-";
+}
+
+function sumOrderItems(items) {
+  return Array.isArray(items)
+    ? items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
+    : 0;
 }

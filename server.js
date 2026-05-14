@@ -12,6 +12,12 @@ const bankName = process.env.BANK_NAME || "BCA";
 const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER || "1234567890";
 const bankAccountHolder = process.env.BANK_ACCOUNT_HOLDER || "Toko Kemayoran";
 const sellerWhatsAppNumber = process.env.SELLER_WHATSAPP_NUMBER || "6281234567890";
+const binderbyteApiKey = process.env.BINDERBYTE_API_KEY || "";
+const binderbyteOrigin = process.env.BINDERBYTE_ORIGIN || "";
+const binderbyteCouriers = String(process.env.BINDERBYTE_COURIERS || "jne,sicepat,pos,tiki,anteraja")
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
 const supabaseUrl = requireEnv("SUPABASE_URL").replace(/\/+$/, "");
 const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
@@ -72,6 +78,169 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, storage: "supabase" });
 });
 
+app.get("/api/wilayah/provinces", asyncHandler(async (_req, res) => {
+  const provinces = await fetchBinderByteWilayah("provinsi");
+  res.json(provinces);
+}));
+
+app.get("/api/wilayah/regencies/:provinceId", asyncHandler(async (req, res) => {
+  const regencies = await fetchBinderByteWilayah("kabupaten", {
+    id_provinsi: req.params.provinceId
+  });
+  res.json(regencies);
+}));
+
+app.get("/api/wilayah/districts/:regencyId", asyncHandler(async (req, res) => {
+  const districts = await fetchBinderByteWilayah("kecamatan", {
+    id_kabupaten: req.params.regencyId
+  });
+  res.json(districts);
+}));
+
+app.get("/api/wilayah/villages/:districtId", asyncHandler(async (req, res) => {
+  const villages = await fetchBinderByteWilayah("kelurahan", {
+    id_kecamatan: req.params.districtId
+  });
+  res.json(villages);
+}));
+
+app.get("/api/locations/search", asyncHandler(async (req, res) => {
+  const search = String(req.query.search || "").trim();
+
+  if (!binderbyteApiKey) {
+    res.status(500).json({ message: "BINDERBYTE_API_KEY belum diatur." });
+    return;
+  }
+
+  if (search.length < 3) {
+    res.status(400).json({ message: "Masukkan minimal 3 karakter untuk mencari lokasi." });
+    return;
+  }
+
+  const url = new URL("https://api.binderbyte.com/v1/locations");
+  url.searchParams.set("api_key", binderbyteApiKey);
+  url.searchParams.set("search", search);
+
+  const response = await fetch(url);
+  const data = await parseResponseBody(response);
+  const isSuccess =
+    response.ok &&
+    String(data?.code || "") === "200" &&
+    Array.isArray(data?.data);
+
+  if (!isSuccess) {
+    res.status(400).json({ message: data?.message || "Gagal mencari lokasi." });
+    return;
+  }
+
+  res.json(data.data.map((entry) => ({
+    id: String(entry.id || "").trim(),
+    type: String(entry.type || "").trim(),
+    label: String(entry.label || "").trim(),
+    destinationQuery: buildDestinationQueryFromLocationLabel(entry.label)
+  })));
+}));
+
+app.post("/api/shipping/options", asyncHandler(async (req, res) => {
+  const {
+    destinationRegencyName,
+    destinationDistrictName,
+    destinationId,
+    destinationQuery,
+    weightGrams,
+    couriers,
+    courierCode
+  } = req.body || {};
+
+  const normalizedWeightGrams = Number(weightGrams);
+  const normalizedCourierCode = String(courierCode || "").trim().toLowerCase();
+  const requestedCouriers = Array.isArray(couriers)
+    ? couriers.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  const activeCouriers = normalizedCourierCode
+    ? [normalizedCourierCode]
+    : requestedCouriers.length
+      ? requestedCouriers
+      : binderbyteCouriers;
+
+  if (!binderbyteApiKey) {
+    res.status(500).json({ message: "BINDERBYTE_API_KEY belum diatur." });
+    return;
+  }
+
+  if (!binderbyteOrigin) {
+    res.status(500).json({ message: "BINDERBYTE_ORIGIN belum diatur." });
+    return;
+  }
+
+  if ((!destinationId && !destinationQuery && !destinationRegencyName) || Number.isNaN(normalizedWeightGrams) || normalizedWeightGrams <= 0) {
+    res.status(400).json({ message: "Tujuan pengiriman dan berat pesanan wajib valid." });
+    return;
+  }
+
+  if (!activeCouriers.length) {
+    res.status(400).json({ message: "Belum ada ekspedisi yang dikonfigurasi." });
+    return;
+  }
+
+  const destination = String(destinationId || "").trim() || String(destinationQuery || "").trim() || [destinationDistrictName, destinationRegencyName]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+
+  let weightKg = Math.max(1, Math.ceil(normalizedWeightGrams / 1000));
+  if (weightKg < 1) {
+    weightKg = 1
+  }
+
+  const payload = new URLSearchParams({
+    api_key: binderbyteApiKey,
+    origin: binderbyteOrigin,
+    destination,
+    courier: activeCouriers.join(","),
+    weight: String(weightKg)
+  });
+
+  const binderbyteResponse = await fetch("https://api.binderbyte.com/v1/cost", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: payload.toString()
+  });
+  const binderbyteData = await parseResponseBody(binderbyteResponse);
+
+  if (!binderbyteResponse.ok || String(binderbyteData?.code || "") !== "200") {
+    const message = binderbyteData?.message || "Gagal mengambil ongkir dari BinderByte.";
+    throw new Error(message);
+  }
+
+  const options = Array.isArray(binderbyteData?.data?.results)
+    ? binderbyteData.data.results.flatMap((courierEntry) => {
+      const courierName = String(courierEntry.name || "").trim() || courierEntry.code;
+      return Array.isArray(courierEntry.costs)
+        ? courierEntry.costs.map((service) => ({
+          courierCode: String(courierEntry.code || "").trim().toLowerCase(),
+          courierName,
+          service: String(service.service || service.type || "").trim(),
+          description: String(service.description || service.name || "").trim(),
+          etd: String(service.etd || service.estimated || "").trim(),
+          cost: Number(service.cost || service.price || 0)
+        }))
+        : [];
+    }).filter((entry) => entry.service && entry.cost > 0)
+    : [];
+
+  res.json({
+    origin: binderbyteData.data.origin,
+    destination: binderbyteData.data.destination,
+    weightKg,
+    weightGrams: normalizedWeightGrams,
+    couriers: activeCouriers,
+    options: options.sort((left, right) => left.cost - right.cost)
+  });
+}));
+
 app.get("/api/admin/verify", requireAdmin, (_req, res) => {
   res.json({ ok: true, authenticated: true });
 });
@@ -124,7 +293,9 @@ app.get("/api/payment-info", (_req, res) => {
     bankName,
     bankAccountNumber,
     bankAccountHolder,
-    sellerWhatsAppNumber
+    sellerWhatsAppNumber,
+    shippingOrigin: binderbyteOrigin,
+    availableCouriers: binderbyteCouriers
   });
 });
 
@@ -232,16 +403,52 @@ app.patch("/api/products/:id", requireAdmin, upload.single("image"), asyncHandle
 }));
 
 app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, res) => {
-  const { customerName, phone, address, notes, items, paymentMethod, senderName, transferNote } = req.body;
+  const {
+    customerName,
+    phone,
+    address,
+    addressDetail,
+    provinceId,
+    provinceName,
+    regencyId,
+    regencyName,
+    districtId,
+    districtName,
+    villageId,
+    villageName,
+    notes,
+    items,
+    paymentMethod,
+    senderName,
+    transferNote,
+    shippingCost,
+    shippingCourierCode,
+    shippingCourierName,
+    shippingService,
+    shippingServiceDescription,
+    shippingEtd,
+    totalWeightGrams
+  } = req.body;
   const parsedItems = safeJsonParse(items);
   const normalizedPaymentMethod = String(paymentMethod || "").trim();
+  const normalizedShippingCost = Number(shippingCost);
+  const normalizedTotalWeightGrams = Number(totalWeightGrams);
   const isBankTransfer = normalizedPaymentMethod === "Transfer Bank";
   const isWhatsAppOrder = normalizedPaymentMethod === "WhatsApp Penjual";
+  const hasShippingSelection =
+    !Number.isNaN(normalizedShippingCost) &&
+    normalizedShippingCost >= 0 &&
+    String(shippingCourierCode || "").trim() &&
+    String(shippingCourierName || "").trim() &&
+    String(shippingService || "").trim();
 
   if (
     !customerName ||
     !phone ||
     !address ||
+    !addressDetail ||
+    !villageId ||
+    !villageName ||
     !normalizedPaymentMethod ||
     !Array.isArray(parsedItems) ||
     !parsedItems.length
@@ -260,6 +467,16 @@ app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, 
     return;
   }
 
+  if (Number.isNaN(normalizedTotalWeightGrams) || normalizedTotalWeightGrams <= 0) {
+    res.status(400).json({ message: "Berat total pesanan belum valid." });
+    return;
+  }
+
+  if (isBankTransfer && !hasShippingSelection) {
+    res.status(400).json({ message: "Opsi pengiriman belum valid." });
+    return;
+  }
+
   let paymentProofUrl = "";
 
   try {
@@ -275,12 +492,28 @@ app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, 
           customer_name: String(customerName).trim(),
           phone: String(phone).trim(),
           address: String(address).trim(),
+          address_detail: String(addressDetail).trim(),
+          recipient_province_id: String(provinceId).trim(),
+          recipient_province_name: String(provinceName).trim(),
+          recipient_regency_id: String(regencyId).trim(),
+          recipient_regency_name: String(regencyName).trim(),
+          recipient_district_id: String(districtId).trim(),
+          recipient_district_name: String(districtName).trim(),
+          recipient_village_id: String(villageId).trim(),
+          recipient_village_name: String(villageName).trim(),
           notes: String(notes || "").trim(),
           payment_method: normalizedPaymentMethod,
           sender_name: String(senderName || customerName).trim(),
           transfer_note: String(transferNote || "").trim(),
           payment_proof_url: paymentProofUrl,
           payment_status: isBankTransfer ? "Menunggu Verifikasi" : "Menunggu Konfirmasi",
+          shipping_cost: hasShippingSelection ? normalizedShippingCost : 0,
+          shipping_courier_code: hasShippingSelection ? String(shippingCourierCode).trim().toLowerCase() : "",
+          shipping_courier_name: hasShippingSelection ? String(shippingCourierName).trim() : "",
+          shipping_service: hasShippingSelection ? String(shippingService).trim() : "",
+          shipping_service_description: String(shippingServiceDescription || "").trim(),
+          shipping_etd: hasShippingSelection ? String(shippingEtd || "").trim() : "",
+          total_weight_grams: normalizedTotalWeightGrams,
           status: "Baru",
           items: parsedItems.map((item) => ({
             id: String(item.id || "").trim(),
@@ -537,7 +770,8 @@ async function replaceProductVariants(productId, variants) {
       product_id: productId,
       label: variant.label,
       price: variant.price,
-      stock: variant.stock
+      stock: variant.stock,
+      weight_grams: variant.weightGrams
     }))
   });
 
@@ -616,7 +850,8 @@ function mapProductRow(row, variants) {
       id: variant.id,
       label: variant.label,
       price: Number(variant.price || 0),
-      stock: Number(variant.stock || 0)
+      stock: Number(variant.stock || 0),
+      weightGrams: Number(variant.weight_grams || 250)
     }))
   };
 }
@@ -627,6 +862,15 @@ function mapOrderRow(row, items) {
     customerName: row.customer_name,
     phone: row.phone,
     address: row.address,
+    addressDetail: row.address_detail || "",
+    recipientProvinceId: row.recipient_province_id || "",
+    recipientProvinceName: row.recipient_province_name || "",
+    recipientRegencyId: row.recipient_regency_id || "",
+    recipientRegencyName: row.recipient_regency_name || "",
+    recipientDistrictId: row.recipient_district_id || "",
+    recipientDistrictName: row.recipient_district_name || "",
+    recipientVillageId: row.recipient_village_id || "",
+    recipientVillageName: row.recipient_village_name || "",
     notes: row.notes || "",
     paymentMethod: row.payment_method,
     senderName: row.sender_name || "",
@@ -634,6 +878,14 @@ function mapOrderRow(row, items) {
     paymentProofUrl: row.payment_proof_url || "",
     paymentStatus: row.payment_status,
     paidAt: row.paid_at,
+    subtotal: Number(row.subtotal || 0),
+    shippingCost: Number(row.shipping_cost || 0),
+    shippingCourierCode: row.shipping_courier_code || "",
+    shippingCourierName: row.shipping_courier_name || "",
+    shippingService: row.shipping_service || "",
+    shippingServiceDescription: row.shipping_service_description || "",
+    shippingEtd: row.shipping_etd || "",
+    totalWeightGrams: Number(row.total_weight_grams || 0),
     total: Number(row.total || 0),
     createdAt: row.created_at,
     status: row.status,
@@ -804,9 +1056,18 @@ function normalizeVariants(rawVariants) {
     .map((variant) => {
       const price = Number(variant.price);
       const stock = Number(variant.stock);
+      const weightGrams = Number(variant.weightGrams);
       const label = String(variant.label || "").trim();
 
-      if (!label || Number.isNaN(price) || price <= 0 || Number.isNaN(stock) || stock < 0) {
+      if (
+        !label ||
+        Number.isNaN(price) ||
+        price <= 0 ||
+        Number.isNaN(stock) ||
+        stock < 0 ||
+        Number.isNaN(weightGrams) ||
+        weightGrams <= 0
+      ) {
         return null;
       }
 
@@ -814,10 +1075,99 @@ function normalizeVariants(rawVariants) {
         id: String(variant.id || cryptoRandomId()),
         label,
         price,
-        stock
+        stock,
+        weightGrams
       };
     })
     .filter(Boolean);
+}
+
+async function fetchBinderByteWilayah(endpoint, params = {}) {
+  try {
+    if (!binderbyteApiKey) {
+      throw new Error("BINDERBYTE_API_KEY belum diatur.");
+    }
+
+    const url = new URL(`https://api.binderbyte.com/wilayah/${endpoint}`);
+    url.searchParams.set("api_key", binderbyteApiKey);
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.set(key, value);
+      }
+    }
+
+    const response = await fetch(url);
+    const data = await parseResponseBody(response);
+    const isSuccessfulWilayahResponse =
+      response.ok &&
+      Array.isArray(data?.value) &&
+      (
+        data?.result === true ||
+        String(data?.code || "") === "200"
+      );
+
+    if (!isSuccessfulWilayahResponse) {
+      throw new Error(data?.message || data?.messages || `Gagal memuat data wilayah ${endpoint}.`);
+    }
+
+    return Array.isArray(data.value) ? data.value : [];
+  } catch (_error) {
+    return fetchFallbackWilayah(endpoint, params);
+  }
+}
+
+function buildDestinationQueryFromLocationLabel(label) {
+  const normalized = String(label || "")
+    .replace(/\([^)]*\)/g, "")
+    .trim();
+  const parts = normalized
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return "";
+  }
+
+  if (parts.length >= 2) {
+    return `${parts[Math.max(parts.length - 2, 0)]}, ${parts[parts.length - 1]}`;
+  }
+
+  return parts[0];
+}
+
+async function fetchFallbackWilayah(endpoint, params = {}) {
+  const fallbackUrl = resolveFallbackWilayahUrl(endpoint, params);
+  if (!fallbackUrl) {
+    throw new Error(`Fallback wilayah untuk ${endpoint} tidak tersedia.`);
+  }
+
+  const response = await fetch(fallbackUrl);
+  const data = await parseResponseBody(response);
+
+  if (!response.ok || !Array.isArray(data)) {
+    throw new Error(`Gagal memuat data wilayah ${endpoint}.`);
+  }
+
+  return data;
+}
+
+function resolveFallbackWilayahUrl(endpoint, params = {}) {
+  const baseUrl = "https://emsifa.github.io/api-wilayah-indonesia/api";
+
+  switch (endpoint) {
+    case "povinsi":
+      return `${baseUrl}/provinces.json`;
+    case "kabupaten":
+      return params.id_provinsi ? `${baseUrl}/regencies/${params.id_provinsi}.json` : "";
+    case "kecamatan":
+      return params.id_kabupaten ? `${baseUrl}/districts/${params.id_kabupaten}.json` : "";
+    case "kelurahan":
+      return params.id_kecamatan ? `${baseUrl}/villages/${params.id_kecamatan}.json` : "";
+    default:
+      return "";
+  }
 }
 
 function inferExtension(mimeType) {

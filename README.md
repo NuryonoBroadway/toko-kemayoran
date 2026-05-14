@@ -40,6 +40,9 @@ BANK_NAME=BCA
 BANK_ACCOUNT_NUMBER=1234567890
 BANK_ACCOUNT_HOLDER=Toko Kemayoran
 SELLER_WHATSAPP_NUMBER=6281234567890
+BINDERBYTE_API_KEY=your-binderbyte-api-key
+BINDERBYTE_ORIGIN=purworejo
+BINDERBYTE_COURIERS=jne,sicepat,pos,tiki,anteraja
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_PRODUCT_IMAGE_BUCKET=product-images
@@ -56,17 +59,11 @@ Template tersedia di `.env.example`.
    - `product-images`
    - `payment-proofs`
 4. Isi `.env` dengan `SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY`.
+5. Isi `BINDERBYTE_API_KEY` dan `BINDERBYTE_ORIGIN` untuk fitur wilayah bertingkat dan cek ongkir.
 
 Catatan:
 
 - Bucket dibuat public karena UI admin saat ini membuka URL file langsung dari browser.
 - Semua query database dan upload file dilakukan dari backend Express menggunakan `service role key`.
+- Setelah update schema untuk berat varian dan ongkir, jalankan ulang SQL terbaru di Supabase agar kolom dan function `create_order_with_items` ikut diperbarui.
 - JSON lokal `data/products.json`, `data/orders.json`, dan folder `uploads/` tidak lagi dipakai sebagai storage utama.
-
-## Token admin default
-
-Secara default token admin adalah:
-
-```txt
-admin123
-```

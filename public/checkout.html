@@ -35,10 +35,41 @@
             Nomor HP
             <input name="phone" type="tel" required />
           </label>
+          <div class="full-width location-search-box">
+            <label>
+              Cari Lokasi Tujuan
+              <input
+                id="destination-search-input"
+                type="text"
+                autocomplete="off"
+                placeholder="Contoh: Cilandak Timur, Pasar Minggu"
+                required
+              />
+            </label>
+            <div id="destination-search-results" class="location-search-results hidden"></div>
+            <div id="selected-destination" class="selected-destination hidden"></div>
+          </div>
           <label class="full-width">
-            Alamat
-            <textarea name="address" rows="4" required></textarea>
+            Alamat Lengkap & Patokan
+            <textarea id="address-detail" name="address_detail" rows="3" required placeholder="Nama jalan, nomor rumah, RT/RW, patokan..."></textarea>
           </label>
+          <div class="full-width shipping-box">
+            <div class="shipping-box-header">
+              <div>
+                <h3>Pilih Pengiriman</h3>
+                <p class="muted">Ongkir dihitung dari tujuan pengiriman dan total berat seluruh item.</p>
+              </div>
+              <button id="refresh-shipping-button" class="secondary-button" type="button">Cek Ongkir</button>
+            </div>
+            <div class="shipping-meta-row">
+              <span id="shipping-weight-badge" class="info-chip">0 g</span>
+            </div>
+            <div id="courier-picker" class="courier-picker"></div>
+            <div id="shipping-options" class="shipping-option-grid">
+              <p class="muted">Cari lalu pilih lokasi tujuan untuk melihat ongkir.</p>
+            </div>
+          </div>
+
           <label class="full-width">
             Catatan
             <textarea name="notes" rows="3" placeholder="Opsional"></textarea>
@@ -93,6 +124,14 @@
         </div>
         <div id="checkout-items" class="cart-items checkout-items"></div>
         <div class="cart-footer checkout-total-box">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span id="checkout-subtotal">Rp0</span>
+          </div>
+          <div class="total-row">
+            <span>Ongkos Kirim</span>
+            <span id="checkout-shipping">Belum dipilih</span>
+          </div>
           <div class="total-row">
             <span>Total</span>
             <strong id="checkout-total">Rp0</strong>
