@@ -6,18 +6,30 @@ const cartCount = document.getElementById("cart-count");
 const cartTotal = document.getElementById("cart-total");
 const searchInput = document.getElementById("search-input");
 const productSummary = document.getElementById("product-summary");
+const categoryFilters = document.getElementById("category-filters");
+const cartBackdrop = document.getElementById("cart-backdrop");
+
 
 let products = [];
 let filteredProducts = [];
 let cart = readCart();
+let currentKeyword = "";
+let currentCategory = "Semua";
 const placeholderImage = createPlaceholderImage();
 
 document.getElementById("open-cart-button").addEventListener("click", () => {
   cartDrawer.classList.remove("hidden");
+  cartBackdrop.classList.remove("hidden");
 });
 
 document.getElementById("close-cart-button").addEventListener("click", () => {
   cartDrawer.classList.add("hidden");
+  cartBackdrop.classList.add("hidden");
+});
+
+cartBackdrop.addEventListener("click", () => {
+  cartDrawer.classList.add("hidden");
+  cartBackdrop.classList.add("hidden");
 });
 
 document.getElementById("checkout-button").addEventListener("click", (event) => {
@@ -28,14 +40,8 @@ document.getElementById("checkout-button").addEventListener("click", (event) => 
 });
 
 searchInput.addEventListener("input", (event) => {
-  const keyword = event.target.value.trim().toLowerCase();
-  filteredProducts = products.filter((product) => {
-    return [product.name, product.category, product.description]
-      .join(" ")
-      .toLowerCase()
-      .includes(keyword);
-  });
-  renderProducts();
+  currentKeyword = event.target.value.trim().toLowerCase();
+  applyFilters();
 });
 
 loadProducts();
@@ -58,6 +64,8 @@ async function loadProducts() {
     cart = normalizeCart(cart, products);
     saveCart();
     filteredProducts = products;
+    renderCategoryFilters();
+    updateHeroStats();
     renderProducts();
     renderCart();
   } catch (_error) {
@@ -67,7 +75,7 @@ async function loadProducts() {
 
 function renderProducts() {
   productGrid.innerHTML = "";
-  productSummary.textContent = `${filteredProducts.length} produk tersedia`;
+  productSummary.textContent = buildProductSummary();
 
   if (!filteredProducts.length) {
     productGrid.innerHTML = "<p>Tidak ada produk yang cocok.</p>";
@@ -79,27 +87,32 @@ function renderProducts() {
     const image = card.querySelector(".product-image");
     const variantSelect = document.createElement("select");
     variantSelect.className = "variant-select";
+    const totalStock = sumVariantStock(product.variants);
+    const cheapestVariant = findLowestVariant(product.variants);
 
     image.src = product.imageUrl || placeholderImage;
     image.alt = product.name;
     card.querySelector(".category-text").textContent = product.category;
+    card.querySelector(".category-badge").textContent = product.category;
+    card.querySelector(".stock-badge").textContent = totalStock > 0 ? `${totalStock} stok` : "Habis";
     card.querySelector(".product-title").textContent = product.name;
     card.querySelector(".description").textContent = product.description || "Tidak ada deskripsi.";
 
     product.variants.forEach((variant) => {
       const option = document.createElement("option");
       option.value = variant.id;
-      option.textContent = `${formatVariantLabel(variant.label)} - ${formatCurrency(variant.price)} (${variant.stock} stok • ${formatWeight(variant.weightGrams)})`;
+      option.textContent = `${formatVariantLabel(variant.label)}`;
       option.disabled = variant.stock === 0;
       variantSelect.appendChild(option);
     });
 
-    const selectedVariant = findSelectedVariant(product, variantSelect.value) || product.variants[0];
-    card.querySelector(".price").textContent = formatCurrency(selectedVariant.price);
+    const selectedVariant = findSelectedVariant(product, variantSelect.value) || cheapestVariant;
+    card.querySelector(".price").textContent = formatCurrency(cheapestVariant.price);
 
     variantSelect.addEventListener("change", () => {
       const nextVariant = findSelectedVariant(product, variantSelect.value);
       card.querySelector(".price").textContent = formatCurrency(nextVariant.price);
+      card.querySelector(".product-weight-chip").textContent = formatWeight(nextVariant.weightGrams);
       updateAllProductButtons();
     });
 
@@ -107,11 +120,11 @@ function renderProducts() {
     controls.insertBefore(variantSelect, card.querySelector(".add-to-cart-button"));
 
     const button = card.querySelector(".add-to-cart-button");
-    
+
     button.addEventListener("click", () => {
       const chosenVariant = findSelectedVariant(product, variantSelect.value);
       const inCart = cart.some((item) => item.id === product.id && item.variantId === chosenVariant.id);
-      
+
       if (inCart) {
         cart = cart.filter((item) => !(item.id === product.id && item.variantId === chosenVariant.id));
         saveCart();
@@ -157,7 +170,8 @@ function addToCart(product, variant) {
 
 function renderCart() {
   cartItemsContainer.innerHTML = "";
-  cartCount.textContent = String(cart.length);
+  const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+  cartCount.textContent = String(totalQty);
 
   if (!cart.length) {
     cartItemsContainer.innerHTML = "<p>Keranjang masih kosong.</p>";
@@ -169,27 +183,32 @@ function renderCart() {
     const row = document.createElement("div");
     row.className = "cart-item";
     row.innerHTML = `
-      <div class="cart-item-new">
-        <img src="${item.imageUrl || placeholderImage}" alt="${item.name}" class="cart-item-image" />
-        <div class="cart-item-details">
-          <div class="cart-item-header">
-            <span class="cart-item-title">${item.name}</span>
-            <span class="cart-item-price">${formatCurrency(item.price * item.quantity)}</span>
+      <div class="cart-item-inner">
+        <div class="cart-item-img-container">
+          <img src="${item.imageUrl || placeholderImage}" alt="${item.name}" class="cart-item-image" />
+        </div>
+        <div class="cart-item-info">
+          <div class="cart-item-top">
+            <div class="cart-item-main">
+              <span class="cart-item-name">${item.name}</span>
+              <span class="cart-item-variant">${item.variantLabel}</span>
+            </div>
+            <button class="cart-item-remove-btn" type="button" aria-label="Hapus">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
           </div>
-          <span class="cart-item-subtitle muted">${item.variantLabel}</span>
           <div class="cart-item-bottom">
-            <div class="cart-item-qty">
-              <span>Qty:</span>
-              <button class="qty-btn btn-minus" type="button">-</button>
-              <span>${item.quantity}</span>
+            <span class="cart-item-price-each">${formatCurrency(item.price)}</span>
+            <div class="cart-item-control">
+              <button class="qty-btn btn-minus" type="button">−</button>
+              <span class="qty-val">${item.quantity}</span>
               <button class="qty-btn btn-plus" type="button">+</button>
             </div>
-            <button class="cart-item-delete-link" type="button">DELETE</button>
           </div>
         </div>
       </div>
     `;
-    row.querySelector(".cart-item-delete-link").addEventListener("click", () => {
+    row.querySelector(".cart-item-remove-btn").addEventListener("click", () => {
       cart = cart.filter((cartItem) => !(cartItem.id === item.id && cartItem.variantId === item.variantId));
       saveCart();
       renderCart();
@@ -207,6 +226,53 @@ function renderCart() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   cartTotal.textContent = formatCurrency(total);
+}
+
+function applyFilters() {
+  filteredProducts = products.filter((product) => {
+    const matchesKeyword = [product.name, product.category, product.description, ...product.variants.map((variant) => variant.label)]
+      .join(" ")
+      .toLowerCase()
+      .includes(currentKeyword);
+    const matchesCategory = currentCategory === "Semua" || product.category === currentCategory;
+    return matchesKeyword && matchesCategory;
+  });
+  updateCategoryFilterState();
+  renderProducts();
+}
+
+function renderCategoryFilters() {
+  const categories = ["Semua", ...new Set(products.map((product) => product.category).filter(Boolean))];
+  categoryFilters.innerHTML = categories
+    .map((category) => `
+      <button class="filter-chip${category === currentCategory ? " active" : ""}" type="button" data-category="${category}">
+        ${category}
+      </button>
+    `)
+    .join("");
+
+  categoryFilters.querySelectorAll("[data-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      currentCategory = button.dataset.category || "Semua";
+      applyFilters();
+    });
+  });
+}
+
+function updateCategoryFilterState() {
+  categoryFilters.querySelectorAll("[data-category]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.category === currentCategory);
+  });
+}
+
+function updateHeroStats() {
+  // Hero section dihapus - fungsi ini dipertahankan untuk kompatibilitas
+}
+
+function buildProductSummary() {
+  const totalVariants = filteredProducts.reduce((sum, product) => sum + product.variants.length, 0);
+  const categoryLabel = currentCategory === "Semua" ? "Semua kategori" : currentCategory;
+  return `${filteredProducts.length} produk • ${totalVariants} varian • ${categoryLabel}`;
 }
 
 function updateCartItemQuantity(productId, variantId, change) {
@@ -268,14 +334,14 @@ function normalizeProduct(product) {
   const variants = Array.isArray(product.variants) && product.variants.length
     ? product.variants
     : [
-        {
-          id: "default",
-          label: "Reguler",
-          price: Number(product.price || 0),
-          stock: Number(product.stock || 0),
-          weightGrams: Number(product.weightGrams || 250)
-        }
-      ];
+      {
+        id: "default",
+        label: "Reguler",
+        price: Number(product.price || 0),
+        stock: Number(product.stock || 0),
+        weightGrams: Number(product.weightGrams || 250)
+      }
+    ];
 
   return {
     ...product,
@@ -289,6 +355,10 @@ function findSelectedVariant(product, variantId) {
 
 function sumVariantStock(variants) {
   return variants.reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
+}
+
+function findLowestVariant(variants) {
+  return [...variants].sort((left, right) => Number(left.price || 0) - Number(right.price || 0))[0];
 }
 
 function normalizeCart(currentCart, availableProducts) {

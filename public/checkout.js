@@ -427,12 +427,22 @@ function renderCheckout() {
     const row = document.createElement("div");
     row.className = "cart-item";
     row.innerHTML = `
-      <div class="cart-row">
-        <div>
-          <strong>${item.name}</strong>
-          <div class="muted">${item.variantLabel || "Reguler"} • Qty ${item.quantity} • ${formatWeight(item.weightGrams * item.quantity)}</div>
+      <div class="cart-item-inner">
+        <div class="cart-item-img-container" style="width: 60px; height: 60px; min-width: 60px;">
+          <img src="${item.imageUrl || "/placeholder-image.png"}" alt="${item.name}" class="cart-item-image" />
         </div>
-        <strong>${formatCurrency(item.price * item.quantity)}</strong>
+        <div class="cart-item-info">
+          <div class="cart-item-top">
+            <div class="cart-item-main">
+              <span class="cart-item-name" style="font-size: 14px;">${item.name}</span>
+              <span class="cart-item-variant">${item.variantLabel || "Reguler"}</span>
+            </div>
+          </div>
+          <div class="cart-item-bottom">
+            <span class="cart-item-price-each" style="font-size: 13px;">${item.quantity} × ${formatCurrency(item.price)}</span>
+            <span class="cart-item-price-total" style="font-weight: 800; font-size: 14px; color: var(--text);">${formatCurrency(item.price * item.quantity)}</span>
+          </div>
+        </div>
       </div>
     `;
     checkoutItems.appendChild(row);

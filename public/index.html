@@ -10,37 +10,50 @@
 
 <body>
   <header class="topbar">
-    <div>
+    <div class="brand-block">
       <p class="eyebrow">Toko Online</p>
       <h1>Toko Kemayoran</h1>
     </div>
-    <div class="header-actions">
-      <button class="cart-button" id="open-cart-button" type="button">
-        Keranjang <span id="cart-count">0</span>
-      </button>
-    </div>
   </header>
 
-  <main class="layout">
-    <section class="catalog-controls">
-      <input id="search-input" class="search-input" type="search" placeholder="Cari produk..." />
-    </section>
+  <main class="layout storefront-layout">
+    <section class="catalog-shell">
+      <section class="catalog-controls">
+        <div class="catalog-search-wrap">
+          <input id="search-input" class="search-input" type="search"
+            placeholder="Cari produk, kategori, atau varian..." />
+        </div>
+        <div id="category-filters" class="filter-chip-row"></div>
+      </section>
 
-    <section class="catalog">
-      <div class="section-heading">
-        <h3>Daftar Produk</h3>
-        <p id="product-summary" class="muted"></p>
-      </div>
-      <div id="product-grid" class="product-grid"></div>
+      <section class="catalog">
+        <div class="section-heading">
+          <div>
+            <h3>Daftar Produk</h3>
+            <p id="product-summary" class="muted"></p>
+          </div>
+        </div>
+        <div id="product-grid" class="product-grid"></div>
+      </section>
     </section>
   </main>
 
+  <!-- Floating Cart FAB -->
+  <button id="open-cart-button" class="cart-fab" type="button" aria-label="Buka keranjang">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+    <span id="cart-count" class="cart-fab-badge">0</span>
+  </button>
+
+  <div id="cart-backdrop" class="cart-backdrop hidden"></div>
   <aside id="cart-drawer" class="cart-drawer hidden">
     <div class="cart-header">
       <h3>Keranjang</h3>
-      <button id="close-cart-button" class="icon-button" type="button">
-        Tutup
-      </button>
+      <button id="close-cart-button" class="icon-button" type="button">Tutup</button>
     </div>
     <div id="cart-items" class="cart-items"></div>
     <div class="cart-footer">
@@ -56,16 +69,26 @@
 
   <template id="product-card-template">
     <article class="product-card">
-      <img class="product-image" alt="" />
-      <div class="product-content">
-        <div class="product-header-row">
-          <h4 class="product-title"></h4>
-          <span class="price"></span>
+      <div class="product-image-wrap">
+        <img class="product-image" alt="" />
+        <div class="product-image-badges">
+          <span class="category-badge"></span>
+          <span class="stock-badge"></span>
         </div>
-        <div class="product-subtitle category-text"></div>
+      </div>
+      <div class="product-content">
+        <div class="product-header-row product-meta-row">
+          <div>
+            <h4 class="product-title"></h4>
+            <div class="product-subtitle category-text"></div>
+          </div>
+          <div class="product-price-box">
+            <span class="muted">Harga</span>
+            <span class="price"></span>
+          </div>
+        </div>
         <p class="description"></p>
         <div class="product-controls">
-          <!-- Select variant akan diinsert di sini -->
           <button class="primary-button add-to-cart-button" type="button">
             Tambah
           </button>

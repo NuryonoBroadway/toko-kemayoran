@@ -89,6 +89,20 @@ form.addEventListener("submit", async (event) => {
 
   formMessage.textContent = "Menyimpan produk...";
   const formData = new FormData(form);
+
+  // Kompres gambar jika ada
+  const imageFile = formData.get("image");
+  if (imageFile && imageFile.size > 0 && imageFile.type.startsWith("image/")) {
+    try {
+      formMessage.textContent = "Mengompres gambar...";
+      const compressed = await compressImage(imageFile, 800, 0.7);
+      formData.set("image", compressed, imageFile.name);
+    } catch (err) {
+      console.error("Gagal mengompres gambar:", err);
+      // Lanjut saja jika kompresi gagal
+    }
+  }
+
   const variants = collectVariants();
   const editingProductId = editingProductIdInput.value.trim();
   const isEditing = Boolean(editingProductId);
@@ -412,6 +426,7 @@ function addVariantRow(variant = {}) {
   });
 
   variantRows.appendChild(row);
+  row.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function collectVariants() {
@@ -974,4 +989,43 @@ function sumOrderItems(items) {
   return Array.isArray(items)
     ? items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
     : 0;
+}
+async function compressImage(file, maxWidth, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: "image/jpeg" }));
+            } else {
+              reject(new Error("Gagal membuat blob gambar."));
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
 }
