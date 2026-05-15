@@ -361,14 +361,41 @@ async function loginAdmin(event) {
 }
 
 // Check session on load
-const savedToken = getSavedToken();
-if (savedToken) {
-  isAdminAuthenticated = true;
-  syncAdminControls();
-  authMessage.textContent = "Sesi aktif.";
-  connectOrderStream(savedToken);
-  loadOrders();
+async function verifySession() {
+  const token = getSavedToken();
+  if (!token) return;
+
+  try {
+    const response = await fetch("/api/auth/me", {
+      headers: { "x-admin-token": token }
+    });
+    const data = await response.json();
+
+    if (response.ok && data.user.role === 'admin') {
+      isAdminAuthenticated = true;
+      syncAdminControls();
+      authMessage.textContent = "Sesi aktif.";
+      connectOrderStream(token);
+      loadOrders();
+      loadProducts();
+      loadAffiliates();
+      
+      // Hide login panel, show content
+      document.querySelector(".panel-auth").classList.add("hidden");
+      document.querySelector(".admin-content").classList.remove("hidden");
+    } else {
+      isAdminAuthenticated = false;
+      sessionStorage.clear();
+      syncAdminControls();
+      authMessage.textContent = "Akses ditolak. Hanya Admin yang dapat mengakses halaman ini.";
+    }
+  } catch (err) {
+    isAdminAuthenticated = false;
+    sessionStorage.clear();
+    syncAdminControls();
+  }
 }
+verifySession();
 
 async function loadProducts() {
   adminProductList.innerHTML = "<p>Memuat produk...</p>";
@@ -540,20 +567,22 @@ function closeProductModal() {
 }
 
 function syncAdminControls() {
-  openProductModalButton.disabled = !isAdminAuthenticated;
-  submitProductButton.disabled = !isAdminAuthenticated;
+  const adminContent = document.querySelector(".admin-content");
+  const authPanel = document.querySelector(".panel-auth");
 
-  const adminSidebar = document.querySelector(".admin-sidebar");
-  const adminLayout = document.querySelector(".admin-layout");
-
-  if (adminSidebar) {
-    adminSidebar.classList.toggle("hidden", isAdminAuthenticated);
+  if (isAdminAuthenticated) {
+    if (adminContent) adminContent.classList.remove("hidden");
+    if (authPanel) authPanel.classList.add("hidden");
+    
+    openProductModalButton.disabled = false;
+    submitProductButton.disabled = false;
+  } else {
+    if (adminContent) adminContent.classList.add("hidden");
+    if (authPanel) authPanel.classList.remove("hidden");
+    
+    openProductModalButton.disabled = true;
+    submitProductButton.disabled = true;
   }
-  if (adminLayout) {
-    adminLayout.classList.toggle("authenticated", isAdminAuthenticated);
-  }
-
-  loadProducts();
 }
 
 function addVariantRow(variant = {}) {
