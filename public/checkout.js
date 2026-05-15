@@ -12,6 +12,7 @@ const destinationSearchResults = document.getElementById("destination-search-res
 const selectedDestinationContainer = document.getElementById("selected-destination");
 const shippingOptionsContainer = document.getElementById("shipping-options");
 const courierPicker = document.getElementById("courier-picker");
+const checkoutSubmitButton = checkoutForm.querySelector('button[type="submit"]');
 
 let paymentInfo = null;
 let shippingOptions = [];
@@ -67,10 +68,6 @@ paymentMethodInputs.forEach((input) => {
   input.addEventListener("change", syncPaymentMethodFields);
 });
 
-function canSubmitWithoutShipping() {
-  return getSelectedPaymentMethod() === "WhatsApp Penjual";
-}
-
 checkoutForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -84,12 +81,12 @@ checkoutForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  if (!selectedShippingOption && !canSubmitWithoutShipping()) {
+  if (!selectedShippingOption) {
     checkoutMessage.textContent = "Pilih layanan pengiriman terlebih dahulu.";
     return;
   }
 
-  const submitButton = checkoutForm.querySelector('button[type="submit"]');
+  const submitButton = checkoutSubmitButton;
   const originalText = submitButton.textContent;
   submitButton.innerHTML = `<span class="spinner"></span> Loading...`;
   submitButton.disabled = true;
@@ -327,6 +324,7 @@ function renderCourierPicker() {
       );
       selectedShippingOption = filtered.length > 0 ? filtered[0] : null;
 
+      syncPaymentMethodFields();
       renderCourierPicker();
       renderShippingOptions();
     });
@@ -334,6 +332,19 @@ function renderCourierPicker() {
 }
 
 function syncPaymentMethodFields() {
+  const bankTransferRadio = paymentMethodInputs.find((input) => input.value === "Transfer Bank");
+  const whatsappRadio = paymentMethodInputs.find((input) => input.value === "WhatsApp Penjual");
+  const isManualDiscussion = selectedShippingOption?.isManualDiscussion === true;
+
+  if (bankTransferRadio) {
+    bankTransferRadio.disabled = isManualDiscussion;
+    bankTransferRadio.closest(".payment-method-card")?.classList.toggle("payment-method-disabled", isManualDiscussion);
+  }
+
+  if (isManualDiscussion && bankTransferRadio?.checked && whatsappRadio) {
+    whatsappRadio.checked = true;
+  }
+
   const selectedPaymentMethod = getSelectedPaymentMethod();
   const isBankTransfer = selectedPaymentMethod === "Transfer Bank";
   const senderNameInput = checkoutForm.elements.senderName;
@@ -350,12 +361,15 @@ function syncPaymentMethodFields() {
     paymentProofInput.value = "";
   }
 
-  if (!isBankTransfer && !selectedShippingOption) {
-    checkoutMessage.textContent = "Jika ongkir belum tersedia, pesanan tetap bisa dikirim ke WhatsApp penjual untuk konfirmasi manual.";
+  if (isManualDiscussion) {
+    checkoutMessage.textContent = "Pengiriman akan dibicarakan langsung dengan penjual. Transfer bank dinonaktifkan sampai ongkir dikonfirmasi.";
     return;
   }
 
-  if (checkoutMessage.textContent.includes("konfirmasi manual")) {
+  if (
+    checkoutMessage.textContent.includes("konfirmasi manual") ||
+    checkoutMessage.textContent.includes("Transfer bank dinonaktifkan")
+  ) {
     checkoutMessage.textContent = "";
   }
 }
@@ -432,11 +446,12 @@ function updateTotals() {
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shippingCost = selectedShippingOption?.cost || 0;
   const total = subtotal + shippingCost;
+  const isManualDiscussion = selectedShippingOption?.isManualDiscussion === true;
 
   document.getElementById("checkout-subtotal").textContent = formatCurrency(subtotal);
   document.getElementById("checkout-weight").textContent = formatWeight(getCartWeightGrams());
   document.getElementById("checkout-shipping").textContent = selectedShippingOption
-    ? formatCurrency(shippingCost)
+    ? (isManualDiscussion ? "Dikonfirmasi penjual" : formatCurrency(shippingCost))
     : "Belum dipilih";
   checkoutTotal.textContent = formatCurrency(total);
 }
@@ -490,6 +505,7 @@ async function fetchShippingOptions() {
       }
     }
 
+    syncPaymentMethodFields();
     renderCourierPicker();
     renderShippingOptions();
   } catch (error) {
@@ -501,6 +517,7 @@ async function fetchShippingOptions() {
         <button id="retry-shipping-button" class="secondary-button" type="button" style="margin-top: 8px;">Coba Lagi</button>
       </div>
     `;
+    syncPaymentMethodFields();
     renderCourierPicker();
     updateTotals();
 
@@ -525,14 +542,15 @@ function renderShippingOptions() {
   }
 
   if (!selectedCourierCode) {
-    shippingOptionsContainer.innerHTML = "<p class=\"muted\">Pilih kurir terlebih dahulu.</p>";
+    shippingOptionsContainer.innerHTML = "";
+    renderDiscussionOption();
     return;
   }
 
   if (!shippingOptions.length) {
-    shippingOptionsContainer.innerHTML = canSubmitWithoutShipping()
-      ? "<p class=\"muted\">Belum ada layanan ongkir. Anda tetap bisa checkout lewat WhatsApp agar ongkir dikonfirmasi manual oleh penjual.</p>"
-      : "<p class=\"muted\">Belum ada layanan ongkir. Klik Cek Ongkir untuk memuat pilihan.</p>";
+    shippingOptionsContainer.innerHTML = "";
+    renderDiscussionOption();
+    shippingOptionsContainer.insertAdjacentHTML("beforeend", "<p class=\"muted shipping-options-empty\">Belum ada layanan ongkir. Anda bisa pilih diskusi dengan penjual.</p>");
     return;
   }
 
@@ -542,13 +560,14 @@ function renderShippingOptions() {
   });
 
   if (!filteredOptions.length) {
-    shippingOptionsContainer.innerHTML = canSubmitWithoutShipping()
-      ? "<p class=\"muted\">Belum ada layanan ongkir untuk kurir ini. Anda tetap bisa checkout lewat WhatsApp agar ongkir dikonfirmasi manual oleh penjual.</p>"
-      : "<p class=\"muted\">Layanan ongkir tidak tersedia untuk kurir yang dipilih. Klik Cek Ongkir atau pilih kurir lain.</p>";
+    shippingOptionsContainer.innerHTML = "";
+    renderDiscussionOption();
+    shippingOptionsContainer.insertAdjacentHTML("beforeend", "<p class=\"muted shipping-options-empty\">Layanan ongkir tidak tersedia untuk kurir yang dipilih. Anda bisa pilih diskusi dengan penjual.</p>");
     return;
   }
 
   shippingOptionsContainer.innerHTML = "";
+  renderDiscussionOption();
 
   filteredOptions.forEach((option) => {
     const button = document.createElement("button");
@@ -573,10 +592,36 @@ function renderShippingOptions() {
     `;
     button.addEventListener("click", () => {
       selectedShippingOption = option;
+      syncPaymentMethodFields();
       renderShippingOptions();
     });
     shippingOptionsContainer.appendChild(button);
   });
+}
+
+function renderDiscussionOption() {
+  const discussionOption = getDiscussionShippingOption();
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `shipping-option-card shipping-option-discussion${selectedShippingOption?.isManualDiscussion ? " selected" : ""}`;
+  button.innerHTML = `
+    <div class="shipping-option-top">
+      <div>
+        <strong>Diskusi dengan Penjual</strong>
+        <div class="muted">Ongkir dan skema pengiriman dikonfirmasi manual lewat WhatsApp.</div>
+      </div>
+      <strong>Manual</strong>
+    </div>
+    <div class="shipping-option-bottom">
+      <span class="info-chip">Cocok jika ingin negosiasi ongkir atau pengiriman khusus</span>
+    </div>
+  `;
+  button.addEventListener("click", () => {
+    selectedShippingOption = discussionOption;
+    syncPaymentMethodFields();
+    renderShippingOptions();
+  });
+  shippingOptionsContainer.appendChild(button);
 }
 
 function canCalculateShipping() {
@@ -631,6 +676,18 @@ function formatWhatsAppNumber(number) {
     return "-";
   }
   return `+${String(number).replace(/[^\d]/g, "")}`;
+}
+
+function getDiscussionShippingOption() {
+  return {
+    courierCode: "manual-discussion",
+    courierName: "Diskusi dengan Penjual",
+    service: "Konfirmasi Manual",
+    description: "Ongkir dan metode pengiriman dibahas langsung",
+    etd: "",
+    cost: 0,
+    isManualDiscussion: true
+  };
 }
 
 function formatCourierName(code) {

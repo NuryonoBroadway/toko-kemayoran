@@ -177,6 +177,12 @@ textarea {
   color: var(--muted);
 }
 
+.payment-method-card.payment-method-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .payment-method-card:has(input:checked) {
   border-color: rgba(13, 107, 77, 0.35);
   box-shadow: 0 10px 24px rgba(13, 107, 77, 0.12);
@@ -1306,6 +1312,16 @@ textarea {
   border-color: rgba(13, 107, 77, 0.4);
   box-shadow: 0 16px 30px rgba(13, 107, 77, 0.12);
   background: linear-gradient(180deg, #ffffff, #f5fbf8);
+}
+
+.shipping-option-discussion {
+  border-style: dashed;
+  background: linear-gradient(180deg, #fffdf9, #f7fcf9);
+}
+
+.shipping-options-empty {
+  margin: 0;
+  padding: 4px 2px 0;
 }
 
 .shipping-option-top,
