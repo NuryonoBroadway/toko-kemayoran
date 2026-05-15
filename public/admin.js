@@ -117,7 +117,9 @@ affiliateForm.addEventListener("submit", async (event) => {
   const data = {
     code: formData.get("code"),
     name: formData.get("name"),
-    commission_rate: formData.get("commission_rate")
+    username: formData.get("username"),
+    commission_rate: formData.get("commission_rate"),
+    password: formData.get("password")
   };
 
   try {
@@ -171,7 +173,7 @@ async function loadAffiliates() {
       const card = document.createElement("div");
       card.className = "admin-order-card"; // Reuse order card style for consistency
       const refLink = `${origin}/?ref=${aff.code}`;
-      
+
       card.innerHTML = `
         <div class="order-card-header">
           <div>
@@ -321,7 +323,7 @@ async function loginAdmin(event) {
   authMessage.textContent = "Memverifikasi...";
 
   try {
-    const response = await fetch("/api/admin/login", {
+    const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -335,20 +337,24 @@ async function loginAdmin(event) {
       throw new Error(result.message || "Login gagal.");
     }
 
+    if (result.role !== 'admin') {
+      throw new Error("Akun ini tidak memiliki akses ke panel admin.");
+    }
+
     isAdminAuthenticated = true;
     sessionStorage.setItem("adminToken", result.token);
+    sessionStorage.setItem("userRole", result.role);
     syncAdminControls();
-    authMessage.textContent = "Login berhasil. Sesi aktif.";
-    connectOrderStream(result.token);
+    loadProducts();
     loadOrders();
-    btn.textContent = originalText;
-    btn.disabled = false;
+    authMessage.textContent = "Login berhasil.";
+
+    // Hide login panel, show content
+    document.querySelector(".panel-auth").classList.add("hidden");
+    document.querySelector(".admin-content").classList.remove("hidden");
   } catch (error) {
-    isAdminAuthenticated = false;
-    sessionStorage.removeItem("adminToken");
-    disconnectOrderStream();
-    syncAdminControls();
     authMessage.textContent = error.message;
+  } finally {
     btn.textContent = originalText;
     btn.disabled = false;
   }
@@ -411,8 +417,8 @@ async function loadProducts() {
           </div>
           <div class="admin-variant-preview-list">
             ${previewVariants
-              .map(
-                (variant) => `
+          .map(
+            (variant) => `
                   <div class="admin-variant-preview-card">
                     <div class="admin-variant-preview-top">
                       <strong>${variant.label}</strong>
@@ -424,8 +430,8 @@ async function loadProducts() {
                     </div>
                   </div>
                 `
-              )
-              .join("")}
+          )
+          .join("")}
             ${hiddenVariantCount ? `<div class="admin-variant-more">+${hiddenVariantCount} varian lainnya</div>` : ""}
           </div>
           <div class="admin-product-footer">
@@ -536,17 +542,17 @@ function closeProductModal() {
 function syncAdminControls() {
   openProductModalButton.disabled = !isAdminAuthenticated;
   submitProductButton.disabled = !isAdminAuthenticated;
-  
+
   const adminSidebar = document.querySelector(".admin-sidebar");
   const adminLayout = document.querySelector(".admin-layout");
-  
+
   if (adminSidebar) {
     adminSidebar.classList.toggle("hidden", isAdminAuthenticated);
   }
   if (adminLayout) {
     adminLayout.classList.toggle("authenticated", isAdminAuthenticated);
   }
-  
+
   loadProducts();
 }
 
@@ -601,14 +607,14 @@ function normalizeProduct(product) {
   const variants = Array.isArray(product.variants) && product.variants.length
     ? product.variants
     : [
-        {
-          id: "default",
-          label: "Reguler",
-          price: Number(product.price || 0),
-          stock: Number(product.stock || 0),
-          weightGrams: Number(product.weightGrams || 250)
-        }
-      ];
+      {
+        id: "default",
+        label: "Reguler",
+        price: Number(product.price || 0),
+        stock: Number(product.stock || 0),
+        weightGrams: Number(product.weightGrams || 250)
+      }
+    ];
 
   return {
     ...product,
@@ -768,15 +774,14 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
         </div>
       </div>
       <p class="muted">${order.transferNote || "Tanpa catatan transfer."}</p>
-      ${
-        order.paymentProofUrl
-          ? `<a class="payment-proof-link" href="${order.paymentProofUrl}" target="_blank" rel="noreferrer">Lihat Bukti Transfer</a>`
-          : ""
+      ${order.paymentProofUrl
+        ? `<a class="payment-proof-link" href="${order.paymentProofUrl}" target="_blank" rel="noreferrer">Lihat Bukti Transfer</a>`
+        : ""
       }
       <div class="order-item-list">
         ${order.items
-          .map(
-            (item) => `
+        .map(
+          (item) => `
             <div class="cart-row order-item-row">
               <div class="order-item-copy">
                 <strong>${item.name}</strong>
@@ -785,8 +790,8 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
               <strong>${formatCurrency(item.subtotal)}</strong>
             </div>
           `
-          )
-          .join("")}
+        )
+        .join("")}
         <div class="cart-row order-summary-row">
           <span>Subtotal Produk</span>
           <strong>${formatCurrency(order.subtotal || sumOrderItems(order.items))}</strong>
@@ -797,9 +802,8 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
         </div>
       </div>
       <p class="muted">${order.notes || "Tanpa catatan."}</p>
-      ${
-        isCompleteSection
-          ? `<div class="order-card-footer receipt-only-footer">
+      ${isCompleteSection
+        ? `<div class="order-card-footer receipt-only-footer">
               <div class="order-badge-group">
                 <span class="status-badge status-${slugify(order.status || "Selesai")}">${order.status}</span>
                 <span class="status-badge payment-status-${slugify(order.paymentStatus || "Sudah Dibayar")}">${order.paymentStatus || "Sudah Dibayar"}</span>
@@ -808,7 +812,7 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
                 ${receiptActionsHtml}
               </div>
             </div>`
-          : `<div class="order-card-footer">
+        : `<div class="order-card-footer">
               <div class="order-badge-group">
                 <span class="status-badge status-${order.status.toLowerCase()}">${order.status}</span>
                 <span class="status-badge payment-status-${slugify(order.paymentStatus || "Menunggu Verifikasi")}">${order.paymentStatus || "Menunggu Verifikasi"}</span>
@@ -933,7 +937,7 @@ async function openReceiptPreview(order) {
 async function downloadReceiptHtml(order) {
   try {
     const viewUrl = `/api/orders/${encodeURIComponent(order.id)}/receipt?token=${encodeURIComponent(getSavedToken())}`;
-    
+
     // Fetch HTML struk dari server
     const response = await fetch(viewUrl, {
       headers: { "x-admin-token": getSavedToken() }
@@ -969,8 +973,8 @@ async function downloadReceiptHtml(order) {
       margin: 0,
       filename: `struk-${order.id}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { 
-        scale: 2, 
+      html2canvas: {
+        scale: 2,
         useCORS: true,
         scrollX: 0,
         scrollY: 0,

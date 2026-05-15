@@ -104,7 +104,6 @@ function renderProducts() {
     image.alt = product.name;
     card.querySelector(".category-text").textContent = product.category;
     card.querySelector(".category-badge").textContent = product.category;
-    card.querySelector(".stock-badge").textContent = totalStock > 0 ? `${totalStock} stok` : "Habis";
     card.querySelector(".product-title").textContent = product.name;
     card.querySelector(".description").textContent = product.description || "Tidak ada deskripsi.";
 

@@ -53,34 +53,47 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const requireAdmin = asyncHandler(async (req, res, next) => {
+const requireAuth = (role) => asyncHandler(async (req, res, next) => {
   const token = getAdminTokenFromRequest(req);
 
   if (!token) {
-    res.status(401).json({ message: "Token admin diperlukan." });
+    res.status(401).json({ message: "Login diperlukan." });
     return;
   }
 
   try {
     const sessionRows = await supabaseJson(`/sessions`, {
       searchParams: {
-        select: "id,user_id,expires_at",
+        select: "id,user_id,expires_at,users(id,username,role)",
         id: `eq.${token}`,
         expires_at: `gt.${new Date().toISOString()}`,
         limit: "1"
       }
     });
 
-    if (!sessionRows.length) {
+    if (!sessionRows.length || !sessionRows[0].users) {
       res.status(401).json({ message: "Sesi tidak valid atau telah kedaluwarsa." });
       return;
     }
 
+    const session = sessionRows[0];
+    const user = session.users;
+
+    // Admin can access everything, others must match the required role
+    if (role && user.role !== role && user.role !== 'admin') {
+      res.status(403).json({ message: "Anda tidak memiliki akses ke fitur ini." });
+      return;
+    }
+
+    req.user = user;
     next();
   } catch (error) {
     res.status(401).json({ message: "Gagal memvalidasi sesi." });
   }
 });
+
+const requireAdmin = requireAuth('admin');
+const requireAffiliate = requireAuth('affiliate');
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, storage: "supabase" });
@@ -148,7 +161,7 @@ app.get("/api/locations/search", asyncHandler(async (req, res) => {
       .map(v => String(v || "").trim())
       .filter(Boolean)
       .join(", ");
-    
+
     return {
       id: String(entry.code || "").trim(),
       type: "village",
@@ -217,7 +230,7 @@ app.post("/api/shipping/options", asyncHandler(async (req, res) => {
     cost: Number(item.price || 0)
   })).filter(opt => opt.cost > 0);
 
-  const filteredOptions = options.filter(opt => 
+  const filteredOptions = options.filter(opt =>
     binderbyteCouriers.some(c => opt.courierCode.toLowerCase() == c.toLowerCase())
   );
 
@@ -230,11 +243,11 @@ app.post("/api/shipping/options", asyncHandler(async (req, res) => {
   });
 }));
 
-app.get("/api/admin/verify", requireAdmin, (_req, res) => {
-  res.json({ ok: true, authenticated: true });
+app.get("/api/auth/me", requireAuth(), (req, res) => {
+  res.json({ ok: true, user: req.user });
 });
 
-app.post("/api/admin/login", asyncHandler(async (req, res) => {
+app.post("/api/auth/login", asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -255,8 +268,23 @@ app.post("/api/admin/login", asyncHandler(async (req, res) => {
     return;
   }
 
-  res.json({ token });
+  // Fetch role
+  const sessionRows = await supabaseJson(`/sessions`, {
+    searchParams: {
+      select: "users(role)",
+      id: `eq.${token}`,
+      limit: "1"
+    }
+  });
+
+  const role = sessionRows[0]?.users?.role || 'affiliate';
+
+  res.json({ token, role });
 }));
+
+app.get("/api/admin/verify", requireAdmin, (_req, res) => {
+  res.json({ ok: true, authenticated: true });
+});
 
 app.get("/api/orders/stream", requireAdmin, (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -607,11 +635,11 @@ app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) 
       const affiliateRows = await supabaseJson(`/affiliates`, {
         searchParams: { code: `eq.${order.affiliate_code}`, limit: "1" }
       });
-      
+
       if (affiliateRows.length) {
         const affiliate = affiliateRows[0];
         const commission = Math.round((order.total || 0) * (Number(affiliate.commission_rate || 5) / 100));
-        
+
         await supabaseJson(`/affiliates`, {
           method: "PATCH",
           searchParams: { id: `eq.${affiliate.id}` },
@@ -634,31 +662,126 @@ app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) 
 app.get("/api/affiliates", requireAdmin, asyncHandler(async (_req, res) => {
   const affiliates = await supabaseJson(`/affiliates`, {
     searchParams: {
-      select: "*",
+      select: "*,users(username)",
       order: "created_at.desc"
     }
   });
   res.json(affiliates);
 }));
 
-app.post("/api/affiliates", requireAdmin, asyncHandler(async (req, res) => {
-  const { code, name, commission_rate } = req.body;
-  if (!code || !name) {
-    res.status(400).json({ message: "Kode dan nama affiliate diperlukan." });
-    return;
-  }
-  const result = await supabaseJson(`/affiliates`, {
-    method: "POST",
-    headers: {
-      Prefer: "return=representation"
-    },
-    body: {
-      code: String(code).trim(),
-      name: String(name).trim(),
-      commission_rate: Number(commission_rate) || 5.00
+app.get("/api/affiliate/me", requireAffiliate, asyncHandler(async (req, res) => {
+  const affiliateRows = await supabaseJson(`/affiliates`, {
+    searchParams: {
+      select: "*",
+      user_id: `eq.${req.user.id}`,
+      order: "created_at.desc"
     }
   });
-  res.status(201).json(result[0]);
+
+  res.json({
+    user: req.user,
+    affiliates: affiliateRows
+  });
+}));
+
+app.get("/api/affiliate/orders", requireAffiliate, asyncHandler(async (req, res) => {
+  // 1. Get all codes for this user
+  const affiliateRows = await supabaseJson(`/affiliates`, {
+    searchParams: {
+      select: "code,commission_rate",
+      user_id: `eq.${req.user.id}`
+    }
+  });
+
+  if (!affiliateRows.length) {
+    return res.json([]);
+  }
+
+  const codes = affiliateRows.map(a => a.code);
+  const codeFilter = `in.("${codes.join('","')}")`;
+
+  // 2. Fetch orders with those codes
+  const orders = await supabaseJson(`/orders`, {
+    searchParams: {
+      select: "id,customer_name,total,status,created_at,affiliate_code",
+      affiliate_code: codeFilter,
+      order: "created_at.desc"
+    }
+  });
+
+  // 3. Map orders to include commission calculation for current display
+  const ordersWithCommission = orders.map(order => {
+    const affiliate = affiliateRows.find(a => a.code === order.affiliate_code);
+    const rate = affiliate ? Number(affiliate.commission_rate || 0) : 0;
+    const commission = Math.round((order.total || 0) * (rate / 100));
+    
+    return {
+      ...order,
+      estimatedCommission: commission
+    };
+  });
+
+  res.json(ordersWithCommission);
+}));
+
+app.post("/api/affiliates", requireAdmin, asyncHandler(async (req, res) => {
+  const { code, name, username, commission_rate, password } = req.body;
+  const targetUsername = String(username || code).trim().toLowerCase();
+
+  if (!code || !name) {
+    res.status(400).json({ message: "Kode dan nama diperlukan." });
+    return;
+  }
+
+  try {
+    let userId;
+
+    // 1. Check if user already exists
+    const existingUser = await supabaseJson(`/users`, {
+      searchParams: {
+        username: `eq.${targetUsername}`,
+        limit: "1"
+      }
+    });
+
+    if (existingUser.length > 0) {
+      userId = existingUser[0].id;
+    } else {
+      // 2. Register new user if doesn't exist
+      if (!password) {
+        res.status(400).json({ message: "Password diperlukan untuk pendaftaran user baru." });
+        return;
+      }
+
+      userId = await supabaseJson(`/rpc/register_user`, {
+        method: "POST",
+        body: {
+          p_username: targetUsername,
+          p_password: String(password),
+          p_role: 'affiliate'
+        }
+      });
+    }
+
+    if (!userId) throw new Error("Gagal mengidentifikasi atau mendaftarkan user.");
+
+    // 3. Create Affiliate entry linked to userId
+    const result = await supabaseJson(`/affiliates`, {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation"
+      },
+      body: {
+        user_id: userId,
+        code: String(code).trim(),
+        name: String(name).trim(),
+        commission_rate: Number(commission_rate) || 5.00
+      }
+    });
+    res.status(201).json(result[0]);
+  } catch (error) {
+    res.status(400).json({ message: error.message || "Gagal membuat affiliate." });
+  }
 }));
 
 app.delete("/api/affiliates/:id", requireAdmin, asyncHandler(async (req, res) => {
