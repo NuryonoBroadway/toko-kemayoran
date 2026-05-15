@@ -4,8 +4,13 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs/promises");
+const os = require("os");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 
 const app = express();
+const execFileAsync = promisify(execFile);
 const port = process.env.PORT || 3000;
 const adminToken = process.env.ADMIN_TOKEN || "tokoKemayoranJaya1234";
 const bankName = process.env.BANK_NAME || "BCA";
@@ -25,6 +30,9 @@ const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
 const supabaseStorageUrl = `${supabaseUrl}/storage/v1`;
 const supabaseProductImageBucket = process.env.SUPABASE_PRODUCT_IMAGE_BUCKET || "product-images";
 const supabasePaymentProofBucket = process.env.SUPABASE_PAYMENT_PROOF_BUCKET || "payment-proofs";
+const chromeBinaryPath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const receiptPdfCache = new Map();
+const receiptPdfCacheTtlMs = 5 * 60 * 1000;
 
 const orderStreamClients = new Set();
 
@@ -520,6 +528,39 @@ app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, 
 app.get("/api/orders", requireAdmin, asyncHandler(async (_req, res) => {
   const orders = await fetchOrders();
   res.json(orders);
+}));
+
+app.get("/api/orders/:id/receipt", requireAdmin, asyncHandler(async (req, res) => {
+  const order = await fetchOrderById(req.params.id);
+  if (!order) {
+    res.status(404).send("Order tidak ditemukan.");
+    return;
+  }
+
+  if (!(order.status === "Diproses" || order.status === "Selesai")) {
+    res.status(400).send("Struk hanya tersedia untuk order Diproses atau Selesai.");
+    return;
+  }
+
+  res.type("html").send(buildReceiptHtmlDocument(order));
+}));
+
+app.get("/api/orders/:id/receipt.pdf", requireAdmin, asyncHandler(async (req, res) => {
+  const order = await fetchOrderById(req.params.id);
+  if (!order) {
+    res.status(404).json({ message: "Order tidak ditemukan." });
+    return;
+  }
+
+  if (!(order.status === "Diproses" || order.status === "Selesai")) {
+    res.status(400).json({ message: "Struk hanya tersedia untuk order Diproses atau Selesai." });
+    return;
+  }
+
+  const pdfBuffer = await buildReceiptPdf(order);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="struk-${sanitizeFilename(order.id)}.pdf"`);
+  res.send(pdfBuffer);
 }));
 
 app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) => {
@@ -1028,6 +1069,443 @@ function safeJsonParse(value) {
   }
 }
 
+function buildReceiptHtmlDocument(order) {
+  const subtotal = Number(order.subtotal || 0) || sumOrderItems(order.items);
+  const shippingCost = Number(order.shippingCost || 0);
+  const itemsHtml = order.items
+    .map(
+      (item) => `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.name)}</strong>
+            <div class="receipt-item-meta">${escapeHtml(item.variantLabel || "Reguler")} • Qty ${item.quantity}</div>
+          </td>
+          <td class="align-right">${formatCurrencyForReceipt(item.price)}</td>
+          <td class="align-right">${item.quantity}</td>
+          <td class="align-right">${formatCurrencyForReceipt(item.subtotal)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Struk ${escapeHtml(order.id)}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #17130f;
+      --muted: #6c645b;
+      --line: #e7ded2;
+      --surface: #fffdf9;
+      --surface-soft: #f8f4ee;
+      --accent: #0d6b4d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f4efe7;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .receipt-shell {
+      max-width: 880px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+    .receipt-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(22, 18, 12, 0.08);
+    }
+    .receipt-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 28px 28px 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fffefb, #fbf8f2);
+    }
+    .receipt-head h1 {
+      margin: 8px 0 0;
+      font-size: 34px;
+      line-height: 1.05;
+    }
+    .eyebrow {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .receipt-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: start;
+      justify-content: end;
+    }
+    .receipt-actions button {
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .receipt-body {
+      display: grid;
+      gap: 24px;
+      padding: 28px;
+    }
+    .receipt-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .receipt-block {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface-soft);
+    }
+    .receipt-block h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+    .receipt-block p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .align-right { text-align: right; }
+    .receipt-item-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .receipt-total-box {
+      margin-left: auto;
+      width: min(100%, 320px);
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffefb, #f8f4ee);
+    }
+    .receipt-total-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .receipt-total-row strong {
+      font-size: 18px;
+    }
+    .receipt-footnote {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    @page {
+      size: A4;
+      margin: 16mm;
+    }
+    @media print {
+      body {
+        background: white;
+      }
+      .receipt-shell {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+      }
+      .receipt-card {
+        border: 0;
+        box-shadow: none;
+        border-radius: 0;
+      }
+      .receipt-actions {
+        display: none;
+      }
+      .receipt-body {
+        display: block;
+        padding: 20px 0 0;
+      }
+      .receipt-grid {
+        display: block;
+      }
+      .receipt-block,
+      .receipt-total-box,
+      section,
+      table {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .receipt-block {
+        margin-bottom: 16px;
+      }
+      .receipt-total-box {
+        width: 100%;
+        margin: 20px 0;
+      }
+      table {
+        margin-top: 8px;
+      }
+      tr, td, th {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
+    @media (max-width: 720px) {
+      .receipt-head,
+      .receipt-grid {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+      }
+      .receipt-head h1 {
+        font-size: 28px;
+      }
+      .receipt-body {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt-shell">
+    <article class="receipt-card">
+      <header class="receipt-head">
+        <div>
+          <p class="eyebrow">Toko Kemayoran</p>
+          <h1>Struk Pesanan</h1>
+        </div>
+        <div class="receipt-actions">
+          <button type="button" onclick="window.print()">Download / Print</button>
+          <button type="button" onclick="window.close()">Tutup</button>
+        </div>
+      </header>
+      <div class="receipt-body">
+        <div class="receipt-grid">
+          <section class="receipt-block">
+            <h2>Informasi Order</h2>
+            <p>ID Order: ${escapeHtml(order.id)}<br />Tanggal: ${escapeHtml(formatDateForReceipt(order.createdAt))}<br />Status: ${escapeHtml(order.status)}<br />Pembayaran: ${escapeHtml(order.paymentStatus || "-")}</p>
+          </section>
+          <section class="receipt-block">
+            <h2>Penerima</h2>
+            <p>${escapeHtml(order.customerName)}<br />${escapeHtml(order.phone)}<br />${escapeHtml(order.address)}</p>
+          </section>
+        </div>
+
+        <section>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="align-right">Harga</th>
+                <th class="align-right">Qty</th>
+                <th class="align-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+        </section>
+
+        <div class="receipt-total-box">
+          <div class="receipt-total-row">
+            <span>Subtotal Produk</span>
+            <span>${formatCurrencyForReceipt(subtotal)}</span>
+          </div>
+          <div class="receipt-total-row">
+            <span>Ongkir</span>
+            <span>${shippingCost > 0 ? formatCurrencyForReceipt(shippingCost) : "Dikonfirmasi penjual"}</span>
+          </div>
+          <div class="receipt-total-row">
+            <strong>Total</strong>
+            <strong>${formatCurrencyForReceipt(order.total || 0)}</strong>
+          </div>
+        </div>
+
+        <div class="receipt-grid">
+          <section class="receipt-block">
+            <h2>Pengiriman</h2>
+            <p>${escapeHtml(formatShippingLabelForReceipt(order))}<br />Estimasi: ${escapeHtml(order.shippingEtd || "-")}<br />Total Berat: ${escapeHtml(formatWeightForReceipt(order.totalWeightGrams || 0))}</p>
+          </section>
+          <section class="receipt-block">
+            <h2>Catatan</h2>
+            <p>${escapeHtml(order.notes || "Tidak ada catatan tambahan.")}</p>
+          </section>
+        </div>
+
+        <p class="receipt-footnote">Struk ini dibuat oleh Toko Kemayoran.</p>
+      </div>
+    </article>
+  </div>
+</body>
+</html>`;
+}
+
+async function buildReceiptPdf(order) {
+  const cacheKey = getReceiptCacheKey(order);
+  const cached = receiptPdfCache.get(cacheKey);
+  if (cached && (Date.now() - cached.createdAt) < receiptPdfCacheTtlMs) {
+    return cached.buffer;
+  }
+
+  const html = buildReceiptHtmlDocument(order);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "receipt-"));
+  const htmlPath = path.join(tempDir, `struk-${sanitizeFilename(order.id)}.html`);
+  const pdfPath = path.join(tempDir, `struk-${sanitizeFilename(order.id)}.pdf`);
+
+  try {
+    await fs.writeFile(htmlPath, html, "utf8");
+    await execFileAsync(chromeBinaryPath, [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-pdf-header-footer",
+      "--run-all-compositor-stages-before-draw",
+      "--virtual-time-budget=1500",
+      `--print-to-pdf=${pdfPath}`,
+      `file://${htmlPath}`
+    ]);
+    const buffer = await fs.readFile(pdfPath);
+    receiptPdfCache.set(cacheKey, {
+      buffer,
+      createdAt: Date.now()
+    });
+    trimReceiptPdfCache();
+    return buffer;
+  } finally {
+    await Promise.allSettled([
+      fs.rm(tempDir, { recursive: true, force: true })
+    ]);
+  }
+}
+
+function sanitizeFilename(value) {
+  return String(value || "receipt").replace(/[^a-zA-Z0-9-_]+/g, "-");
+}
+
+function formatCurrencyForReceipt(value) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(Number(value || 0));
+}
+
+function formatWeightForReceipt(value) {
+  const grams = Number(value || 0);
+  if (!grams) {
+    return "0 g";
+  }
+
+  if (grams >= 1000 && grams % 1000 === 0) {
+    return `${grams / 1000} kg`;
+  }
+
+  return `${grams} g`;
+}
+
+function formatDateForReceipt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "long",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function formatShippingLabelForReceipt(order) {
+  const segments = [order.shippingCourierName, order.shippingService].map((value) => String(value || "").trim()).filter(Boolean);
+  if (segments.length) {
+    return segments.join(" ");
+  }
+
+  return "Diskusi dengan Penjual";
+}
+
+function sumOrderItems(items) {
+  return Array.isArray(items)
+    ? items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
+    : 0;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function getReceiptCacheKey(order) {
+  return JSON.stringify({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    total: order.total,
+    subtotal: order.subtotal,
+    shippingCost: order.shippingCost,
+    shippingCourierName: order.shippingCourierName,
+    shippingService: order.shippingService,
+    shippingEtd: order.shippingEtd,
+    totalWeightGrams: order.totalWeightGrams,
+    notes: order.notes,
+    customerName: order.customerName,
+    phone: order.phone,
+    address: order.address,
+    items: (order.items || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      variantLabel: item.variantLabel,
+      price: item.price,
+      quantity: item.quantity,
+      subtotal: item.subtotal
+    }))
+  });
+}
+
+function trimReceiptPdfCache() {
+  const now = Date.now();
+  for (const [key, entry] of receiptPdfCache.entries()) {
+    if ((now - entry.createdAt) >= receiptPdfCacheTtlMs) {
+      receiptPdfCache.delete(key);
+    }
+  }
+}
+
 function normalizeVariants(rawVariants) {
   const parsedVariants = safeJsonParse(rawVariants);
   if (!Array.isArray(parsedVariants)) {
@@ -1139,7 +1617,7 @@ function resolveFallbackWilayahUrl(endpoint, params = {}) {
   const baseUrl = "https://emsifa.github.io/api-wilayah-indonesia/api";
 
   switch (endpoint) {
-    case "povinsi":
+    case "provinsi":
       return `${baseUrl}/provinces.json`;
     case "kabupaten":
       return params.id_provinsi ? `${baseUrl}/regencies/${params.id_provinsi}.json` : "";

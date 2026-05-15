@@ -560,6 +560,13 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
       order.paymentStatus === "Menunggu Verifikasi" || order.paymentStatus === "Menunggu Konfirmasi";
     const paymentButtonLabel = order.paymentStatus === "Ditolak" ? "Verifikasi Ulang" : "Verifikasi Pembayaran";
     const nextPaymentStatus = "Sudah Dibayar";
+    const canShowReceipt = order.status === "Diproses" || order.status === "Selesai";
+    const receiptActionsHtml = canShowReceipt
+      ? `
+          <button class="secondary-button order-receipt-preview-button" type="button">Lihat Struk</button>
+          <button class="secondary-button order-receipt-download-button" type="button">Unduh Struk</button>
+        `
+      : "";
 
     card.innerHTML = `
       <div class="order-card-header">
@@ -621,13 +628,22 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
       <p class="muted">${order.notes || "Tanpa catatan."}</p>
       ${
         isCompleteSection
-          ? ""
+          ? `<div class="order-card-footer receipt-only-footer">
+              <div class="order-badge-group">
+                <span class="status-badge status-${slugify(order.status || "Selesai")}">${order.status}</span>
+                <span class="status-badge payment-status-${slugify(order.paymentStatus || "Sudah Dibayar")}">${order.paymentStatus || "Sudah Dibayar"}</span>
+              </div>
+              <div class="product-action-group">
+                ${receiptActionsHtml}
+              </div>
+            </div>`
           : `<div class="order-card-footer">
               <div class="order-badge-group">
                 <span class="status-badge status-${order.status.toLowerCase()}">${order.status}</span>
                 <span class="status-badge payment-status-${slugify(order.paymentStatus || "Menunggu Verifikasi")}">${order.paymentStatus || "Menunggu Verifikasi"}</span>
               </div>
               <div class="product-action-group">
+                ${receiptActionsHtml}
                 ${showDeniedButton ? `<button class="danger-button order-deny-button" type="button">Denied Pembayaran</button>` : ""}
                 ${showPaymentButton ? `<button class="secondary-button order-payment-button" type="button">${paymentButtonLabel}</button>` : ""}
                 <button class="primary-button order-status-button" type="button" ${canProgressOrder ? "" : "disabled"}>${actionLabel}</button>
@@ -688,8 +704,82 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
       });
     }
 
+    if (canShowReceipt) {
+      const previewBtn = card.querySelector(".order-receipt-preview-button");
+      const downloadBtn = card.querySelector(".order-receipt-download-button");
+
+      previewBtn?.addEventListener("click", async () => {
+        await withButtonLoading(previewBtn, "Lihat Struk", () => openReceiptPreview(order));
+      });
+
+      downloadBtn?.addEventListener("click", async () => {
+        await withButtonLoading(downloadBtn, "Unduh Struk", () => downloadReceiptHtml(order));
+      });
+    }
+
     container.appendChild(card);
   });
+}
+
+function openReceiptPreview(order) {
+  const token = getSavedToken();
+  const previewUrl = `/api/orders/${encodeURIComponent(order.id)}/receipt?token=${encodeURIComponent(token)}`;
+  const receiptWindow = window.open(previewUrl, "_blank");
+  if (!receiptWindow) {
+    showNotification("Popup diblokir browser. Izinkan popup untuk melihat struk.");
+    throw new Error("Popup diblokir browser.");
+  }
+}
+
+async function downloadReceiptHtml(order) {
+  try {
+    const response = await fetch(`/api/orders/${encodeURIComponent(order.id)}/receipt.pdf`, {
+      headers: {
+        "x-admin-token": getSavedToken()
+      }
+    });
+
+    if (!response.ok) {
+      let message = "Gagal mengunduh struk PDF.";
+      try {
+        const result = await response.json();
+        message = result.message || message;
+      } catch (_error) {
+        // Ignore body parse failure
+      }
+      throw new Error(message);
+    }
+
+    const file = await response.blob();
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `struk-${order.id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    showNotification(error.message || "Gagal mengunduh struk PDF.");
+    throw error;
+  }
+}
+
+async function withButtonLoading(button, originalText, action) {
+  if (!button) {
+    await action();
+    return;
+  }
+
+  button.innerHTML = `<span class="spinner"></span> Loading...`;
+  button.disabled = true;
+
+  try {
+    await action();
+  } finally {
+    button.textContent = originalText;
+    button.disabled = false;
+  }
 }
 
 function connectOrderStream(token) {
