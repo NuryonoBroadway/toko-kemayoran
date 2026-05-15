@@ -30,7 +30,6 @@ const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
 const supabaseStorageUrl = `${supabaseUrl}/storage/v1`;
 const supabaseProductImageBucket = process.env.SUPABASE_PRODUCT_IMAGE_BUCKET || "product-images";
 const supabasePaymentProofBucket = process.env.SUPABASE_PAYMENT_PROOF_BUCKET || "payment-proofs";
-const chromeBinaryPath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const receiptPdfCache = new Map();
 const receiptPdfCacheTtlMs = 5 * 60 * 1000;
 
@@ -545,22 +544,24 @@ app.get("/api/orders/:id/receipt", requireAdmin, asyncHandler(async (req, res) =
   res.type("html").send(buildReceiptHtmlDocument(order));
 }));
 
-app.get("/api/orders/:id/receipt.pdf", requireAdmin, asyncHandler(async (req, res) => {
+app.get("/api/orders/:id/receipt-links", requireAdmin, asyncHandler(async (req, res) => {
   const order = await fetchOrderById(req.params.id);
   if (!order) {
     res.status(404).json({ message: "Order tidak ditemukan." });
     return;
   }
 
-  if (!(order.status === "Diproses" || order.status === "Selesai")) {
-    res.status(400).json({ message: "Struk hanya tersedia untuk order Diproses atau Selesai." });
-    return;
-  }
+  // Karena di Vercel/Serverless sulit menjalankan Chrome untuk PDF, 
+  // kita arahkan unduhan ke versi HTML yang memicu print otomatis.
+  res.json({
+    viewUrl: `/api/orders/${order.id}/receipt`,
+    downloadUrl: `/api/orders/${order.id}/receipt?print=true`
+  });
+}));
 
-  const pdfBuffer = await buildReceiptPdf(order);
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="struk-${sanitizeFilename(order.id)}.pdf"`);
-  res.send(pdfBuffer);
+app.get("/api/orders/:id/receipt.pdf", requireAdmin, asyncHandler(async (req, res) => {
+  // Fallback jika ada yang mengakses langsung .pdf
+  res.redirect(`/api/orders/${req.params.id}/receipt?print=true`);
 }));
 
 app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) => {
@@ -1115,13 +1116,13 @@ function buildReceiptHtmlDocument(order) {
     }
     .receipt-shell {
       max-width: 880px;
-      margin: 32px auto;
-      padding: 0 20px;
+      margin: 0;
+      padding: 0;
     }
     .receipt-card {
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 24px;
+      border-radius: 0px;
       overflow: hidden;
       box-shadow: 0 24px 60px rgba(22, 18, 12, 0.08);
     }
@@ -1307,7 +1308,6 @@ function buildReceiptHtmlDocument(order) {
         </div>
         <div class="receipt-actions">
           <button type="button" onclick="window.print()">Download / Print</button>
-          <button type="button" onclick="window.close()">Tutup</button>
         </div>
       </header>
       <div class="receipt-body">
@@ -1368,45 +1368,23 @@ function buildReceiptHtmlDocument(order) {
       </div>
     </article>
   </div>
+  <script>
+    if (window.location.search.includes("print=true")) {
+      window.onload = () => {
+        window.print();
+        // Opsional: Tutup tab setelah print selesai/dibatalkan (beberapa browser memblokir ini)
+        // window.onafterprint = () => window.close();
+      };
+    }
+  </script>
 </body>
 </html>`;
 }
 
 async function buildReceiptPdf(order) {
-  const cacheKey = getReceiptCacheKey(order);
-  const cached = receiptPdfCache.get(cacheKey);
-  if (cached && (Date.now() - cached.createdAt) < receiptPdfCacheTtlMs) {
-    return cached.buffer;
-  }
-
-  const html = buildReceiptHtmlDocument(order);
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "receipt-"));
-  const htmlPath = path.join(tempDir, `struk-${sanitizeFilename(order.id)}.html`);
-  const pdfPath = path.join(tempDir, `struk-${sanitizeFilename(order.id)}.pdf`);
-
-  try {
-    await fs.writeFile(htmlPath, html, "utf8");
-    await execFileAsync(chromeBinaryPath, [
-      "--headless=new",
-      "--disable-gpu",
-      "--no-pdf-header-footer",
-      "--run-all-compositor-stages-before-draw",
-      "--virtual-time-budget=1500",
-      `--print-to-pdf=${pdfPath}`,
-      `file://${htmlPath}`
-    ]);
-    const buffer = await fs.readFile(pdfPath);
-    receiptPdfCache.set(cacheKey, {
-      buffer,
-      createdAt: Date.now()
-    });
-    trimReceiptPdfCache();
-    return buffer;
-  } finally {
-    await Promise.allSettled([
-      fs.rm(tempDir, { recursive: true, force: true })
-    ]);
-  }
+  // Fungsi ini dinonaktifkan karena keterbatasan environment Vercel (No Chrome)
+  // Sebagai gantinya kita menggunakan window.print() di sisi client.
+  throw new Error("PDF generation is handled via client-side printing.");
 }
 
 function sanitizeFilename(value) {

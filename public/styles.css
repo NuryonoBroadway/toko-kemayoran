@@ -1500,6 +1500,63 @@ a[aria-disabled="true"] {
   }
 }
 
+/* Receipt Modal */
+.receipt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.receipt-modal.hidden {
+  display: none;
+}
+
+.receipt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 18, 12, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 0;
+}
+
+.receipt-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 900px;
+  background: var(--surface, #fffdf9);
+  border: 1px solid var(--line, #e7ded2);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(22, 18, 12, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.receipt-modal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line, #e7ded2);
+  background: var(--surface, #fffdf9);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.receipt-modal-frame {
+  width: 100%;
+  height: 80vh;
+  border: none;
+  background: #f4efe7;
+}
+
 /* Toast Notification */
 .toast-notification {
   position: fixed;

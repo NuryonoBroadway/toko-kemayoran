@@ -721,46 +721,102 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
   });
 }
 
-function openReceiptPreview(order) {
-  const token = getSavedToken();
-  const previewUrl = `/api/orders/${encodeURIComponent(order.id)}/receipt?token=${encodeURIComponent(token)}`;
-  const receiptWindow = window.open(previewUrl, "_blank");
-  if (!receiptWindow) {
-    showNotification("Popup diblokir browser. Izinkan popup untuk melihat struk.");
-    throw new Error("Popup diblokir browser.");
+async function openReceiptPreview(order) {
+  const modal = document.getElementById("receipt-modal");
+  const frame = document.getElementById("receipt-modal-frame");
+  const closeBtn = document.getElementById("receipt-modal-close");
+
+  if (!modal || !frame) {
+    showNotification("Komponen modal tidak ditemukan.");
+    return;
   }
+
+  const viewUrl = `/api/orders/${encodeURIComponent(order.id)}/receipt`;
+  const response = await fetch(viewUrl, {
+    headers: { "x-admin-token": getSavedToken() }
+  });
+
+  if (!response.ok) {
+    showNotification("Gagal memuat struk.");
+    return;
+  }
+
+  frame.srcdoc = await response.text();
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+
+  function closeModal() {
+    modal.classList.add("hidden");
+    document.body.style.overflow = "";
+    frame.srcdoc = "";
+  }
+
+  closeBtn.onclick = closeModal;
+  modal.querySelector(".receipt-modal-backdrop").onclick = closeModal;
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") { closeModal(); document.removeEventListener("keydown", onKeyDown); }
+  };
+  document.addEventListener("keydown", onKeyDown);
 }
 
 async function downloadReceiptHtml(order) {
   try {
-    const response = await fetch(`/api/orders/${encodeURIComponent(order.id)}/receipt.pdf`, {
-      headers: {
-        "x-admin-token": getSavedToken()
-      }
+    const viewUrl = `/api/orders/${encodeURIComponent(order.id)}/receipt?token=${encodeURIComponent(getSavedToken())}`;
+    
+    // Fetch HTML struk dari server
+    const response = await fetch(viewUrl, {
+      headers: { "x-admin-token": getSavedToken() }
     });
+    const html = await response.text();
 
-    if (!response.ok) {
-      let message = "Gagal mengunduh struk PDF.";
-      try {
-        const result = await response.json();
-        message = result.message || message;
-      } catch (_error) {
-        // Ignore body parse failure
-      }
-      throw new Error(message);
+    // Gunakan DOMParser untuk mengekstrak hanya bagian .receipt-shell
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const receiptContent = doc.querySelector(".receipt-shell");
+
+    if (!receiptContent) {
+      throw new Error("Gagal mengekstrak konten struk.");
     }
 
-    const file = await response.blob();
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `struk-${order.id}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    // Hapus tombol agar tidak masuk ke PDF
+    const actions = receiptContent.querySelector(".receipt-actions");
+    if (actions) actions.remove();
+
+    // Ambil CSS dari dokumen struk agar style ikut terbawa
+    const receiptStyle = doc.querySelector("style");
+
+    // Mount elemen ke DOM pada posisi tetap di sudut kiri-atas
+    // agar html2pdf menangkap dari koordinat 0,0
+    // Lebar 794px = A4 pada 96dpi agar konten pas tanpa terpotong
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;top:0;left:0;width:794px;z-index:-9999;visibility:hidden;background:#f4efe7;";
+    if (receiptStyle) container.appendChild(receiptStyle.cloneNode(true));
+    container.appendChild(receiptContent);
+    document.body.appendChild(container);
+
+    const opt = {
+      margin: 0,
+      filename: `struk-${order.id}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { 
+        scale: 2, 
+        useCORS: true,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
+        windowWidth: 794
+      },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+    };
+
+    try {
+      await html2pdf().set(opt).from(receiptContent).save();
+    } finally {
+      document.body.removeChild(container);
+    }
   } catch (error) {
-    showNotification(error.message || "Gagal mengunduh struk PDF.");
+    showNotification(error.message || "Gagal mengunduh struk.");
     throw error;
   }
 }

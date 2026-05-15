@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Toko Kemayoran</title>
   <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 
 <body class="admin-page">
@@ -161,6 +162,18 @@
           <p id="form-message" class="muted"></p>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal preview struk -->
+  <div id="receipt-modal" class="receipt-modal hidden" role="dialog" aria-modal="true" aria-label="Preview Struk">
+    <div class="receipt-modal-backdrop"></div>
+    <div class="receipt-modal-panel">
+      <div class="receipt-modal-toolbar">
+        <strong>Preview Struk</strong>
+        <button id="receipt-modal-close" class="secondary-button" type="button">Tutup</button>
+      </div>
+      <iframe id="receipt-modal-frame" class="receipt-modal-frame" title="Struk Pesanan"></iframe>
     </div>
   </div>
 
