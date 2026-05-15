@@ -599,8 +599,11 @@ function renderOrderSection(container, orders, isCompleteSection, isDeniedSectio
         ${order.items
           .map(
             (item) => `
-            <div class="cart-row">
-              <span>${item.name} x${item.quantity}</span>
+            <div class="cart-row order-item-row">
+              <div class="order-item-copy">
+                <strong>${item.name}</strong>
+                <span class="muted">${item.variantLabel || "Reguler"} • Qty ${item.quantity}</span>
+              </div>
               <strong>${formatCurrency(item.subtotal)}</strong>
             </div>
           `

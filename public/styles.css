@@ -937,6 +937,20 @@ textarea {
   background: var(--surface-alt);
 }
 
+.order-item-row {
+  align-items: start;
+}
+
+.order-item-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.order-item-copy strong {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
 .order-card-footer {
   display: flex;
   justify-content: space-between;
