@@ -8,48 +8,101 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="/ui.js"></script>
   <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --accent: #0d6b4d;
+      --accent-soft: rgba(13, 107, 77, 0.05);
+      --text: #1a1a1a;
+      --text-muted: #64748b;
+      --line: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+      line-height: 1.5;
+    }
+
     .affiliate-dashboard {
       max-width: 1200px;
-      margin: 40px auto;
-      padding: 0 20px;
+      margin: 0 auto;
+      padding: 40px 20px;
     }
+
     .header-actions {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 32px;
+      margin-bottom: 40px;
+      gap: 20px;
     }
+
+    @media (max-width: 640px) {
+      .header-actions {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .logout-btn {
+        width: 100%;
+        text-align: center;
+      }
+    }
+
+    #user-welcome {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 0;
+      background: linear-gradient(135deg, var(--accent), #15803d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 24px;
-      margin-bottom: 40px;
+      margin-bottom: 48px;
     }
+
     .stat-card {
-      background: var(--surface);
+      background: var(--card-bg);
       padding: 32px;
       border-radius: 24px;
       border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      transition: transform 0.2s;
     }
+
+    .stat-card:hover {
+      transform: translateY(-4px);
+    }
+
     .stat-card span {
       display: block;
       color: var(--text-muted);
       font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
       font-weight: 600;
     }
+
     .stat-card strong {
-      font-size: 32px;
-      color: var(--text);
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--accent);
     }
-    
+
     .section-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 24px;
+      font-size: 24px;
+      font-weight: 800;
+      margin: 48px 0 24px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -58,45 +111,54 @@
     /* Referral Links List */
     .links-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 20px;
-      margin-bottom: 48px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
     }
+
     .link-card {
-      background: var(--surface);
-      padding: 24px;
-      border-radius: 20px;
+      background: var(--card-bg);
+      padding: 28px;
+      border-radius: 24px;
       border: 1px solid var(--line);
+      box-shadow: var(--shadow);
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
     }
+
     .link-card-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
+      gap: 12px;
     }
+
     .link-card-header h3 {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 700;
+      margin: 0;
     }
+
     .link-badge {
-      background: var(--surface-soft);
-      padding: 4px 12px;
-      border-radius: 8px;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 10px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--accent);
+      white-space: nowrap;
     }
+
     .referral-box {
-      background: var(--surface-soft);
-      padding: 12px 16px;
-      border-radius: 12px;
+      background: #f1f5f9;
+      padding: 14px 16px;
+      border-radius: 16px;
       display: flex;
       gap: 12px;
       align-items: center;
       border: 1px solid var(--line);
     }
+
     .referral-box input {
       flex: 1;
       background: transparent;
@@ -104,57 +166,95 @@
       font-size: 14px;
       color: var(--text);
       font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      outline: none;
     }
+
     .copy-btn {
       padding: 8px 16px;
       font-size: 13px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
     }
 
-    /* Orders Table */
-    .table-container {
-      background: var(--surface);
-      border-radius: 24px;
+    /* Modern Card-based List Layout */
+    .list-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100%, 1fr));
+      gap: 16px;
+    }
+
+    .data-item-card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 20px;
       border: 1px solid var(--line);
-      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
+
+    .data-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
     }
-    th {
-      background: var(--surface-soft);
-      text-align: left;
-      padding: 16px 24px;
+
+    .data-item-title {
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .data-item-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
       font-size: 13px;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
     }
-    td {
-      padding: 16px 24px;
-      border-top: 1px solid var(--line);
-      font-size: 14px;
+
+    .data-item-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid #f1f5f9;
     }
+
+    .amount-badge {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
     .status-pill {
-      padding: 4px 12px;
-      border-radius: 20px;
+      padding: 6px 12px;
+      border-radius: 10px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
     }
-    .status-selesai { background: rgba(13, 107, 77, 0.1); color: var(--accent); }
-    .status-proses { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-    .status-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+
+    .status-selesai { background: #dcfce7; color: #15803d; }
+    .status-proses { background: #dbeafe; color: #1d4ed8; }
+    .status-pending { background: #fef3c7; color: #b45309; }
 
     .logout-btn {
       color: #ef4444;
-      background: rgba(239, 68, 68, 0.05);
-      padding: 10px 20px;
-      border-radius: 12px;
-      font-weight: 600;
+      background: #fee2e2;
+      padding: 12px 24px;
+      border-radius: 14px;
+      font-weight: 700;
       border: none;
       cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: #fecaca;
     }
   </style>
 </head>
@@ -192,23 +292,14 @@
 
     <!-- Orders History Section -->
     <h2 class="section-title">Riwayat Pesanan</h2>
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Order ID</th>
-            <th>Tanggal</th>
-            <th>Customer</th>
-            <th>Kode</th>
-            <th>Total</th>
-            <th>Status</th>
-            <th>Komisi</th>
-          </tr>
-        </thead>
-        <tbody id="orders-tbody">
-          <!-- Rows will be injected here -->
-        </tbody>
-      </table>
+    <div id="orders-list" class="list-container">
+      <p class="muted">Memuat data...</p>
+    </div>
+
+    <!-- Payout History Section -->
+    <h2 class="section-title" style="margin-top: 48px;">Riwayat Pembayaran Komisi</h2>
+    <div id="payouts-list" class="list-container">
+      <p class="muted">Memuat data...</p>
     </div>
   </div>
 
@@ -224,15 +315,17 @@
 
     async function loadDashboard() {
       try {
-        const [meRes, ordersRes] = await Promise.all([
+        const [meRes, ordersRes, payoutsRes] = await Promise.all([
           fetch('/api/affiliate/me', { headers: { 'x-admin-token': token } }),
-          fetch('/api/affiliate/orders', { headers: { 'x-admin-token': token } })
+          fetch('/api/affiliate/orders', { headers: { 'x-admin-token': token } }),
+          fetch('/api/affiliate/payouts', { headers: { 'x-admin-token': token } })
         ]);
 
         if (!meRes.ok) throw new Error('Sesi berakhir.');
         
         const meData = await meRes.json();
         const ordersData = await ordersRes.json();
+        const payoutsData = await payoutsRes.json();
 
         // Update Header & Stats
         document.getElementById('user-welcome').textContent = `Halo, ${meData.user.username}`;
@@ -264,25 +357,54 @@
         `).join('');
 
         // Render Orders
-        const ordersTbody = document.getElementById('orders-tbody');
+        const ordersList = document.getElementById('orders-list');
         if (ordersData.length === 0) {
-          ordersTbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 40px;" class="muted">Belum ada pesanan masuk.</td></tr>';
+          ordersList.innerHTML = '<div class="data-item-card" style="text-align:center;"><p class="muted">Belum ada pesanan masuk.</p></div>';
         } else {
-          ordersTbody.innerHTML = ordersData.map(order => `
-            <tr>
-              <td>#${order.id.slice(0, 8)}</td>
-              <td>${new Date(order.created_at).toLocaleDateString('id-ID')}</td>
-              <td>${order.customer_name}</td>
-              <td><span class="link-badge">${order.affiliate_code}</span></td>
-              <td>${formatCurrency(order.total)}</td>
-              <td><span class="status-pill status-${order.status.toLowerCase()}">${order.status}</span></td>
-              <td style="font-weight:700; color: var(--accent);">${formatCurrency(order.estimatedCommission)}</td>
-            </tr>
+          ordersList.innerHTML = ordersData.map(order => `
+            <div class="data-item-card">
+              <div class="data-item-header">
+                <span class="data-item-title">${order.customer_name}</span>
+                <span class="status-pill status-${order.status.toLowerCase()}">${order.status}</span>
+              </div>
+              <div class="data-item-meta">
+                <span>ID: #${order.id.slice(0, 8)}</span>
+                <span>${new Date(order.created_at).toLocaleDateString('id-ID')}</span>
+                <span>Kode: <span class="link-badge">${order.affiliate_code}</span></span>
+              </div>
+              <div class="data-item-footer">
+                <span class="muted">Komisi Estimasi</span>
+                <span class="amount-badge">${formatCurrency(order.estimatedCommission)}</span>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Render Payouts
+        const payoutsList = document.getElementById('payouts-list');
+        if (payoutsData.length === 0) {
+          payoutsList.innerHTML = '<div class="data-item-card" style="text-align:center;"><p class="muted">Belum ada riwayat pembayaran komisi.</p></div>';
+        } else {
+          payoutsList.innerHTML = payoutsData.map(p => `
+            <div class="data-item-card">
+              <div class="data-item-header">
+                <span class="data-item-title">Pembayaran Komisi</span>
+                <span class="link-badge">${p.affiliates.code}</span>
+              </div>
+              <div class="data-item-meta">
+                <span>${new Date(p.paid_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                <span>Catatan: ${p.notes || 'Payout Admin'}</span>
+              </div>
+              <div class="data-item-footer">
+                <span class="muted">Jumlah Dibayar</span>
+                <span class="amount-badge">${formatCurrency(p.amount)}</span>
+              </div>
+            </div>
           `).join('');
         }
 
       } catch (err) {
-        alert(err.message);
+        showNotification(err.message, "error");
         window.location.href = '/login.html';
       }
     }
@@ -290,7 +412,7 @@
     function copyLink(code) {
       const link = `${window.location.origin}/?ref=${code}`;
       navigator.clipboard.writeText(link);
-      alert('Link referral berhasil disalin!');
+      showNotification('Link referral berhasil disalin!', 'success');
     }
 
     document.getElementById('logout-button').addEventListener('click', () => {

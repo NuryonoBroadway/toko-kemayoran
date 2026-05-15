@@ -5,9 +5,14 @@ const loginForm = document.getElementById("login-form");
 const authMessage = document.getElementById("admin-auth-message");
 const formMessage = document.getElementById("form-message");
 
+const payoutModal = document.getElementById("payout-modal");
+const closePayoutModalButton = document.getElementById("close-payout-modal");
+const payoutHistoryList = document.getElementById("payout-history-list");
+
 function getSavedToken() {
   return sessionStorage.getItem("adminToken") || "";
 }
+
 const adminProductList = document.getElementById("admin-product-list");
 const adminOrderList = document.getElementById("admin-order-list");
 const adminCompleteOrderList = document.getElementById("admin-complete-order-list");
@@ -180,7 +185,10 @@ async function loadAffiliates() {
             <strong>${aff.name}</strong>
             <p class="muted">Kode: ${aff.code} • Komisi: ${aff.commission_rate}%</p>
           </div>
-          <button class="icon-button delete-aff-btn" data-id="${aff.id}">Hapus</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="secondary-button history-aff-btn" style="padding: 4px 10px; font-size: 11px;">Lihat Riwayat</button>
+            <button class="icon-button delete-aff-btn" data-id="${aff.id}">&times;</button>
+          </div>
         </div>
         <div class="admin-summary-grid" style="grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px; background: #fbfaf8; border-radius: 8px; margin-top: 12px;">
           <div style="display: flex; flex-direction: column;">
@@ -192,11 +200,28 @@ async function loadAffiliates() {
             <strong style="font-size: 14px; color: var(--accent);">${formatCurrency(aff.total_earned || 0)}</strong>
           </div>
         </div>
-        <div class="order-card-body" style="padding-top: 12px;">
-          <div class="referral-link-box" style="display: flex; gap: 8px; align-items: center;">
-            <input type="text" value="${refLink}" readonly class="ref-link-input" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px;" />
-            <button class="secondary-button copy-ref-btn" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">Salin Link</button>
+        <div class="order-card-body" style="padding-top: 12px; display: flex; flex-direction: column; gap: 16px;">
+          <div class="referral-link-section">
+            <p class="muted" style="font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Link Referral</p>
+            <div class="referral-link-box" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <input type="text" value="${refLink}" readonly class="ref-link-input" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px;" />
+              <button class="secondary-button copy-ref-btn" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">Salin Link</button>
+            </div>
           </div>
+          
+          <div class="divider" style="height: 1px; background: var(--line); opacity: 0.5; margin: 4px 0;"></div>
+
+          <div class="payout-action-section">
+            <button class="primary-button payout-aff-btn" style="width: 100%; padding: 12px; font-weight: 600;">Bayar Komisi Sekarang</button>
+            
+            <div class="payout-history-accordion hidden" id="history-container-${aff.id}" style="margin-top: 12px; background: #faf9f6; border-radius: 12px; padding: 12px; border: 1px solid rgba(0,0,0,0.03);">
+              <div class="payout-list-inline" style="display: flex; flex-direction: column; gap: 8px;">
+                <p class="muted" style="font-size: 11px; text-align: center;">Memuat riwayat...</p>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       `;
 
@@ -206,22 +231,60 @@ async function loadAffiliates() {
         document.execCommand("copy");
         const originalText = card.querySelector(".copy-ref-btn").textContent;
         card.querySelector(".copy-ref-btn").textContent = "Tersalin!";
+        showNotification("Link referral disalin!", "success");
         setTimeout(() => {
           card.querySelector(".copy-ref-btn").textContent = originalText;
         }, 2000);
       });
 
-      card.querySelector(".delete-aff-btn").addEventListener("click", async () => {
-        if (!confirm(`Hapus affiliate ${aff.name}?`)) return;
-        try {
-          await fetch(`/api/affiliates/${aff.id}`, {
-            method: "DELETE",
-            headers: { "x-admin-token": getSavedToken() }
-          });
-          loadAffiliates();
-        } catch (error) {
-          alert("Gagal menghapus affiliate.");
+      card.querySelector(".payout-aff-btn").addEventListener("click", () => {
+        processPayout(aff.id, Number(aff.total_earned || 0));
+      });
+
+      card.querySelector(".history-aff-btn").addEventListener("click", async () => {
+        const container = card.querySelector(".payout-history-accordion");
+        const listEl = container.querySelector(".payout-list-inline");
+
+        const isHidden = container.classList.toggle("hidden");
+        if (!isHidden) {
+          try {
+            const res = await fetch(`/api/admin/affiliates/${aff.id}/payouts`, {
+              headers: { "x-admin-token": getSavedToken() }
+            });
+            const payouts = await res.json();
+
+            if (!payouts.length) {
+              listEl.innerHTML = "<p class='muted' style='font-size: 11px; text-align: center; padding: 10px;'>Belum ada riwayat pembayaran.</p>";
+            } else {
+              listEl.innerHTML = payouts.map(p => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #fbfaf8; border-radius: 8px; border: 1px solid rgba(0,0,0,0.03);">
+                  <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--accent);">${formatCurrency(p.amount)}</span>
+                    <span class="muted" style="font-size: 10px;">${new Date(p.paid_at).toLocaleDateString('id-ID')}</span>
+                  </div>
+                  <span class="muted" style="font-size: 10px; font-style: italic;">${p.notes || 'Payout Admin'}</span>
+                </div>
+              `).join('');
+            }
+          } catch (err) {
+            listEl.innerHTML = "<p class='error' style='font-size: 11px; text-align: center;'>Gagal memuat data.</p>";
+          }
         }
+      });
+
+      card.querySelector(".delete-aff-btn").addEventListener("click", () => {
+        showConfirm(`Hapus affiliate ${aff.name}?`, async () => {
+          try {
+            await fetch(`/api/affiliates/${aff.id}`, {
+              method: "DELETE",
+              headers: { "x-admin-token": getSavedToken() }
+            });
+            showNotification("Affiliate berhasil dihapus", "success");
+            loadAffiliates();
+          } catch (error) {
+            showNotification("Gagal menghapus affiliate", "error");
+          }
+        });
       });
 
       adminAffiliateList.appendChild(card);
@@ -229,6 +292,33 @@ async function loadAffiliates() {
   } catch (error) {
     adminAffiliateList.innerHTML = "<p class='muted'>Gagal memuat data affiliate.</p>";
   }
+}
+
+async function processPayout(id, currentAmount) {
+  if (currentAmount <= 0) {
+    showNotification("Saldo affiliate masih nol.", "info");
+    return;
+  }
+
+  showConfirm(`Apakah Anda yakin telah membayar komisi sebesar ${formatCurrency(currentAmount)} dan ingin mereset saldo affiliate ini?`, async () => {
+    try {
+      const response = await fetch(`/api/affiliates/${id}/payout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-token": getSavedToken()
+        }
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+
+      showNotification("Payout berhasil diproses dan saldo telah direset.", "success");
+      loadAffiliates();
+    } catch (err) {
+      showNotification("Gagal memproses payout: " + err.message, "error");
+    }
+  });
 }
 
 
@@ -350,7 +440,8 @@ async function loginAdmin(event) {
     authMessage.textContent = "Login berhasil.";
 
     // Hide login panel, show content
-    document.querySelector(".panel-auth").classList.add("hidden");
+    const adminSidebar = document.querySelector(".admin-sidebar");
+    if (adminSidebar) adminSidebar.classList.add("hidden");
     document.querySelector(".admin-content").classList.remove("hidden");
   } catch (error) {
     authMessage.textContent = error.message;
@@ -379,9 +470,10 @@ async function verifySession() {
       loadOrders();
       loadProducts();
       loadAffiliates();
-      
+
       // Hide login panel, show content
-      document.querySelector(".panel-auth").classList.add("hidden");
+      const adminSidebar = document.querySelector(".admin-sidebar");
+      if (adminSidebar) adminSidebar.classList.add("hidden");
       document.querySelector(".admin-content").classList.remove("hidden");
     } else {
       isAdminAuthenticated = false;
@@ -568,18 +660,21 @@ function closeProductModal() {
 
 function syncAdminControls() {
   const adminContent = document.querySelector(".admin-content");
-  const authPanel = document.querySelector(".panel-auth");
+  const authPanel = document.querySelector(".admin-sidebar");
+  const adminLayout = document.querySelector(".admin-layout");
 
   if (isAdminAuthenticated) {
     if (adminContent) adminContent.classList.remove("hidden");
     if (authPanel) authPanel.classList.add("hidden");
-    
+    if (adminLayout) adminLayout.classList.add("authenticated");
+
     openProductModalButton.disabled = false;
     submitProductButton.disabled = false;
   } else {
     if (adminContent) adminContent.classList.add("hidden");
     if (authPanel) authPanel.classList.remove("hidden");
-    
+    if (adminLayout) adminLayout.classList.remove("authenticated");
+
     openProductModalButton.disabled = true;
     submitProductButton.disabled = true;
   }
@@ -1073,7 +1168,7 @@ function disconnectOrderStream() {
 
 async function updateOrderStatus(orderId, status) {
   if (!isAdminAuthenticated) {
-    alert("Login admin terlebih dahulu.");
+    showNotification("Login admin terlebih dahulu.", "error");
     return;
   }
 
@@ -1092,13 +1187,13 @@ async function updateOrderStatus(orderId, status) {
     }
     loadOrders(false);
   } catch (error) {
-    alert(error.message);
+    showNotification(error.message, "error");
   }
 }
 
 async function updatePaymentStatus(orderId, paymentStatus) {
   if (!isAdminAuthenticated) {
-    alert("Login admin terlebih dahulu.");
+    showNotification("Login admin terlebih dahulu.", "error");
     return;
   }
 
@@ -1117,7 +1212,7 @@ async function updatePaymentStatus(orderId, paymentStatus) {
     }
     loadOrders(false);
   } catch (error) {
-    alert(error.message);
+    showNotification(error.message, "error");
   }
 }
 

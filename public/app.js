@@ -45,7 +45,7 @@ cartBackdrop.addEventListener("click", () => {
 document.getElementById("checkout-button").addEventListener("click", (event) => {
   if (!cart.length) {
     event.preventDefault();
-    alert("Keranjang masih kosong.");
+    showNotification("Keranjang masih kosong.", "info");
   }
 });
 
@@ -154,7 +154,7 @@ function addToCart(product, variant) {
   const existingItem = cart.find((item) => item.id === product.id && item.variantId === variant.id);
   if (existingItem) {
     if (existingItem.quantity >= variant.stock) {
-      alert("Jumlah melebihi stok varian.");
+      showNotification("Jumlah melebihi stok varian.", "error");
       return;
     }
     existingItem.quantity += 1;

@@ -25,6 +25,7 @@ body {
     linear-gradient(180deg, #faf7f0 0%, var(--bg) 100%);
   color: var(--text);
   line-height: 1.5;
+  overflow-x: hidden; /* Prevent horizontal scroll */
 }
 
 .admin-page {
@@ -963,6 +964,9 @@ textarea {
   display: grid;
   grid-template-columns: minmax(300px, 480px) 1fr;
   gap: 24px;
+  padding-inline: clamp(16px, 3vw, 40px);
+  max-width: 100vw;
+  box-sizing: border-box;
 }
 
 .admin-layout.authenticated {
@@ -2210,4 +2214,151 @@ a[aria-disabled="true"] {
 
 .logout-btn:hover {
   background: rgba(239, 68, 68, 0.1);
+}
+/* Notifications */
+.notification-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.notification {
+  pointer-events: auto;
+  min-width: 300px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  border-left: 6px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: slideInRight 0.3s ease forwards;
+  transition: all 0.3s ease;
+}
+
+.notification.success { border-left-color: #10b981; }
+.notification.error { border-left-color: #ef4444; }
+.notification.info { border-left-color: #3b82f6; }
+
+.notification.fade-out {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(50px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Payout History */
+.payout-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.payout-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: var(--surface-soft);
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.payout-history-item .meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.payout-history-item .amount {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.payout-history-item .date {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.notif-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  color: inherit;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.notif-close:hover {
+  opacity: 1;
+}
+
+/* Modal Global Styles */
+.modal-body {
+  padding: 16px 0;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 20px;
+}
+
+/* Affiliate & Order Card (Modern Premium Gray) */
+.admin-order-card {
+  background: #f8fafc; /* Refined gray-blue tint */
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-order-card:hover {
+  background: #f1f5f9;
+  box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.admin-order-card .order-card-header {
+  margin-bottom: 4px;
+}
+
+.admin-order-card .admin-summary-grid {
+  background: #ffffff !important;
+  border: 1px solid rgba(0,0,0,0.03);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.admin-order-card .ref-link-input {
+  background: #ffffff !important;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
+.admin-order-card .divider {
+  background: var(--line);
+  opacity: 0.3;
+}
+
+.admin-order-card .payout-action-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }

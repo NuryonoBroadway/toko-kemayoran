@@ -724,6 +724,83 @@ app.get("/api/affiliate/orders", requireAffiliate, asyncHandler(async (req, res)
   res.json(ordersWithCommission);
 }));
 
+app.get("/api/affiliate/payouts", requireAffiliate, asyncHandler(async (req, res) => {
+  // Get all affiliates for this user
+  const affiliates = await supabaseJson(`/affiliates`, {
+    searchParams: { select: "id", user_id: `eq.${req.user.id}` }
+  });
+
+  if (!affiliates.length) return res.json([]);
+
+  const ids = affiliates.map(a => a.id);
+  const payouts = await supabaseJson(`/affiliate_payouts`, {
+    searchParams: {
+      select: "*, affiliates(code, name)",
+      affiliate_id: `in.("${ids.join('","')}")`,
+      order: "paid_at.desc"
+    }
+  }); 
+
+  res.json(payouts);
+}));
+
+app.post("/api/affiliates/:id/payout", requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  // 1. Get current affiliate data
+  const rows = await supabaseJson(`/affiliates`, {
+    searchParams: { id: `eq.${id}`, limit: "1" }
+  });
+
+  if (!rows.length) {
+    res.status(404).json({ message: "Affiliate tidak ditemukan." });
+    return;
+  }
+
+  const affiliate = rows[0];
+  const amountToPay = Number(affiliate.total_earned || 0);
+
+  if (amountToPay <= 0) {
+    res.status(400).json({ message: "Saldo affiliate masih nol." });
+    return;
+  }
+
+  // 2. Record payout history
+  await supabaseJson(`/affiliate_payouts`, {
+    method: "POST",
+    body: {
+      affiliate_id: id,
+      amount: amountToPay,
+      notes: notes || `Pembayaran komisi via admin`
+    }
+  });
+
+  // 3. Reset total_earned and total_orders
+  await supabaseJson(`/affiliates`, {
+    method: "PATCH",
+    searchParams: { id: `eq.${id}` },
+    body: {
+      total_earned: 0,
+      total_orders: 0
+    }
+  });
+
+  res.json({ message: "Payout berhasil diproses.", amount: amountToPay });
+}));
+
+app.get("/api/admin/affiliates/:id/payouts", requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const payouts = await supabaseJson(`/affiliate_payouts`, {
+    searchParams: {
+      select: "*",
+      affiliate_id: `eq.${id}`,
+      order: "paid_at.desc"
+    }
+  });
+  res.json(payouts);
+}));
+
 app.post("/api/affiliates", requireAdmin, asyncHandler(async (req, res) => {
   const { code, name, username, commission_rate, password } = req.body;
   const targetUsername = String(username || code).trim().toLowerCase();
