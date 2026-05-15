@@ -2093,3 +2093,26 @@ a[aria-disabled="true"] {
   cursor: not-allowed;
   border-color: #eee;
 }
+
+/* Affiliate Styles */
+.affiliate-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.referral-link-box {
+  background: var(--surface-soft);
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ref-link-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(13, 107, 77, 0.1);
+}

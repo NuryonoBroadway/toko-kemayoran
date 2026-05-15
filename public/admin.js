@@ -30,6 +30,14 @@ const adminCompleteOrderCount = document.getElementById("admin-complete-order-co
 const adminProductToolbarCount = document.getElementById("admin-product-toolbar-count");
 const adminVariantToolbarCount = document.getElementById("admin-variant-toolbar-count");
 
+const adminAffiliateList = document.getElementById("admin-affiliate-list");
+const adminAffiliateCount = document.getElementById("admin-affiliate-count");
+const affiliateModal = document.getElementById("affiliate-modal");
+const openAffiliateModalButton = document.getElementById("open-affiliate-modal");
+const closeAffiliateModalButton = document.getElementById("close-affiliate-modal");
+const affiliateForm = document.getElementById("affiliate-form");
+const affiliateFormMessage = document.getElementById("affiliate-form-message");
+
 let isAdminAuthenticated = false;
 let orderEventSource = null;
 
@@ -48,15 +56,33 @@ openProductModalButton.addEventListener("click", () => {
 
 closeProductModalButton.addEventListener("click", closeProductModal);
 
+openAffiliateModalButton.addEventListener("click", () => {
+  if (!isAdminAuthenticated) return;
+  affiliateForm.reset();
+  affiliateFormMessage.textContent = "";
+  affiliateModal.classList.remove("hidden");
+});
+
+closeAffiliateModalButton.addEventListener("click", () => {
+  affiliateModal.classList.add("hidden");
+});
+
 productModal.addEventListener("click", (event) => {
   if (event.target === productModal) {
     closeProductModal();
   }
 });
 
+affiliateModal.addEventListener("click", (event) => {
+  if (event.target === affiliateModal) {
+    affiliateModal.classList.add("hidden");
+  }
+});
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !productModal.classList.contains("hidden")) {
-    closeProductModal();
+  if (event.key === "Escape") {
+    if (!productModal.classList.contains("hidden")) closeProductModal();
+    if (!affiliateModal.classList.contains("hidden")) affiliateModal.classList.add("hidden");
   }
 });
 
@@ -71,8 +97,138 @@ tabButtons.forEach((button) => {
     tabPanels.forEach((panel) => {
       panel.classList.toggle("hidden", panel.dataset.panel !== tab);
     });
+
+    if (tab === "affiliates") {
+      loadAffiliates();
+    }
   });
 });
+
+affiliateForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!isAdminAuthenticated) return;
+
+  const btn = document.getElementById("submit-affiliate-button");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Menyimpan...";
+
+  const formData = new FormData(affiliateForm);
+  const data = {
+    code: formData.get("code"),
+    name: formData.get("name"),
+    commission_rate: formData.get("commission_rate")
+  };
+
+  try {
+    const response = await fetch("/api/affiliates", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-token": getSavedToken()
+      },
+      body: JSON.stringify(data)
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Gagal menyimpan affiliate.");
+
+    affiliateFormMessage.textContent = "Affiliate berhasil ditambahkan!";
+    affiliateForm.reset();
+    setTimeout(() => {
+      affiliateModal.classList.add("hidden");
+      loadAffiliates();
+    }, 1500);
+  } catch (error) {
+    affiliateFormMessage.textContent = error.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
+async function loadAffiliates() {
+  if (!isAdminAuthenticated) return;
+  adminAffiliateList.innerHTML = "<p class='muted'>Memuat data affiliate...</p>";
+
+  try {
+    const response = await fetch("/api/affiliates", {
+      headers: { "x-admin-token": getSavedToken() }
+    });
+    const affiliates = await response.json();
+
+    adminAffiliateCount.textContent = `${affiliates.length} affiliate`;
+    adminAffiliateList.innerHTML = "";
+
+    if (affiliates.length === 0) {
+      adminAffiliateList.innerHTML = "<p class='muted'>Belum ada affiliate.</p>";
+      return;
+    }
+
+    const origin = window.location.origin;
+
+    affiliates.forEach((aff) => {
+      const card = document.createElement("div");
+      card.className = "admin-order-card"; // Reuse order card style for consistency
+      const refLink = `${origin}/?ref=${aff.code}`;
+      
+      card.innerHTML = `
+        <div class="order-card-header">
+          <div>
+            <strong>${aff.name}</strong>
+            <p class="muted">Kode: ${aff.code} • Komisi: ${aff.commission_rate}%</p>
+          </div>
+          <button class="icon-button delete-aff-btn" data-id="${aff.id}">Hapus</button>
+        </div>
+        <div class="admin-summary-grid" style="grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px; background: #fbfaf8; border-radius: 8px; margin-top: 12px;">
+          <div style="display: flex; flex-direction: column;">
+            <span class="muted" style="font-size: 11px; text-transform: uppercase;">Total Order</span>
+            <strong style="font-size: 14px;">${aff.total_orders || 0}</strong>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <span class="muted" style="font-size: 11px; text-transform: uppercase;">Total Komisi</span>
+            <strong style="font-size: 14px; color: var(--accent);">${formatCurrency(aff.total_earned || 0)}</strong>
+          </div>
+        </div>
+        <div class="order-card-body" style="padding-top: 12px;">
+          <div class="referral-link-box" style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" value="${refLink}" readonly class="ref-link-input" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px;" />
+            <button class="secondary-button copy-ref-btn" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">Salin Link</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector(".copy-ref-btn").addEventListener("click", () => {
+        const input = card.querySelector(".ref-link-input");
+        input.select();
+        document.execCommand("copy");
+        const originalText = card.querySelector(".copy-ref-btn").textContent;
+        card.querySelector(".copy-ref-btn").textContent = "Tersalin!";
+        setTimeout(() => {
+          card.querySelector(".copy-ref-btn").textContent = originalText;
+        }, 2000);
+      });
+
+      card.querySelector(".delete-aff-btn").addEventListener("click", async () => {
+        if (!confirm(`Hapus affiliate ${aff.name}?`)) return;
+        try {
+          await fetch(`/api/affiliates/${aff.id}`, {
+            method: "DELETE",
+            headers: { "x-admin-token": getSavedToken() }
+          });
+          loadAffiliates();
+        } catch (error) {
+          alert("Gagal menghapus affiliate.");
+        }
+      });
+
+      adminAffiliateList.appendChild(card);
+    });
+  } catch (error) {
+    adminAffiliateList.innerHTML = "<p class='muted'>Gagal memuat data affiliate.</p>";
+  }
+}
+
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

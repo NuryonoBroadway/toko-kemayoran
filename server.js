@@ -504,6 +504,7 @@ app.post("/api/orders", upload.single("paymentProof"), asyncHandler(async (req, 
           shipping_etd: hasShippingSelection ? String(shippingEtd || "").trim() : "",
           total_weight_grams: normalizedTotalWeightGrams,
           status: "Baru",
+          affiliate_code: req.body.affiliateCode ? String(req.body.affiliateCode).trim() : null,
           items: parsedItems.map((item) => ({
             id: String(item.id || "").trim(),
             variantId: String(item.variantId || "").trim(),
@@ -600,9 +601,74 @@ app.patch("/api/orders/:id/status", requireAdmin, asyncHandler(async (req, res) 
     }
   });
 
+  // Handle Affiliate Commission
+  if (status === "Selesai" && order.status !== "Selesai" && order.affiliate_code) {
+    try {
+      const affiliateRows = await supabaseJson(`/affiliates`, {
+        searchParams: { code: `eq.${order.affiliate_code}`, limit: "1" }
+      });
+      
+      if (affiliateRows.length) {
+        const affiliate = affiliateRows[0];
+        const commission = Math.round((order.total || 0) * (Number(affiliate.commission_rate || 5) / 100));
+        
+        await supabaseJson(`/affiliates`, {
+          method: "PATCH",
+          searchParams: { id: `eq.${affiliate.id}` },
+          body: {
+            total_earned: Number(affiliate.total_earned || 0) + commission,
+            total_orders: Number(affiliate.total_orders || 0) + 1
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Gagal update komisi affiliate:", err);
+    }
+  }
+
   const updatedOrder = await fetchOrderById(req.params.id);
   broadcastOrderEvent("order:updated", { orderId: req.params.id, type: "status" });
   res.json(updatedOrder);
+}));
+
+app.get("/api/affiliates", requireAdmin, asyncHandler(async (_req, res) => {
+  const affiliates = await supabaseJson(`/affiliates`, {
+    searchParams: {
+      select: "*",
+      order: "created_at.desc"
+    }
+  });
+  res.json(affiliates);
+}));
+
+app.post("/api/affiliates", requireAdmin, asyncHandler(async (req, res) => {
+  const { code, name, commission_rate } = req.body;
+  if (!code || !name) {
+    res.status(400).json({ message: "Kode dan nama affiliate diperlukan." });
+    return;
+  }
+  const result = await supabaseJson(`/affiliates`, {
+    method: "POST",
+    headers: {
+      Prefer: "return=representation"
+    },
+    body: {
+      code: String(code).trim(),
+      name: String(name).trim(),
+      commission_rate: Number(commission_rate) || 5.00
+    }
+  });
+  res.status(201).json(result[0]);
+}));
+
+app.delete("/api/affiliates/:id", requireAdmin, asyncHandler(async (req, res) => {
+  await supabaseJson(`/affiliates`, {
+    method: "DELETE",
+    searchParams: {
+      id: `eq.${req.params.id}`
+    }
+  });
+  res.status(204).end();
 }));
 
 app.patch("/api/orders/:id/payment-status", requireAdmin, asyncHandler(async (req, res) => {
@@ -913,6 +979,7 @@ function mapOrderRow(row, items) {
     total: Number(row.total || 0),
     createdAt: row.created_at,
     status: row.status,
+    affiliate_code: row.affiliate_code || null,
     items: items.map((item) => ({
       id: item.id,
       productId: item.product_id,

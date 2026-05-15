@@ -121,6 +121,11 @@ checkoutForm.addEventListener("submit", async (event) => {
   formData.set("shippingServiceDescription", selectedShippingOption?.description || "");
   formData.set("shippingEtd", selectedShippingOption?.etd || "");
   formData.set("totalWeightGrams", String(getCartWeightGrams()));
+  const affiliateCode = localStorage.getItem("affiliateCode");
+  if (affiliateCode) {
+    formData.set("affiliateCode", affiliateCode);
+  }
+
   formData.set(
     "items",
     JSON.stringify(
@@ -142,6 +147,9 @@ checkoutForm.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(result.message || "Checkout gagal.");
     }
+
+    // Hapus kode affiliate setelah order berhasil
+    localStorage.removeItem("affiliateCode");
 
     if (selectedPaymentMethod === "WhatsApp Penjual" && paymentInfo?.sellerWhatsAppNumber) {
       const targetUrl = buildWhatsAppUrl(paymentInfo.sellerWhatsAppNumber, result);

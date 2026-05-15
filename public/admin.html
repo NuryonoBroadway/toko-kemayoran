@@ -73,6 +73,7 @@
           <button class="tab-button" type="button" data-tab="ongoing">Ongoing Order</button>
           <button class="tab-button" type="button" data-tab="complete">Complete Order</button>
           <button class="tab-button" type="button" data-tab="denied">Denied Order</button>
+          <button class="tab-button" type="button" data-tab="affiliates">Affiliate</button>
         </div>
       </section>
 
@@ -115,6 +116,20 @@
           <p class="muted">Order dengan pembayaran ditolak akan dipindahkan ke sini.</p>
         </div>
         <div id="admin-denied-order-list" class="order-list"></div>
+      </section>
+
+      <section class="panel admin-tab-panel hidden" data-panel="affiliates">
+        <div class="section-heading">
+          <div>
+            <h2>Affiliate</h2>
+            <p class="muted">Kelola program referral dan link affiliate.</p>
+          </div>
+          <button id="open-affiliate-modal" class="primary-button" type="button">Tambah Affiliate</button>
+        </div>
+        <div class="admin-product-toolbar">
+          <span id="admin-affiliate-count" class="info-chip">0 affiliate</span>
+        </div>
+        <div id="admin-affiliate-list" class="affiliate-list"></div>
       </section>
     </section>
   </main>
@@ -174,6 +189,37 @@
         <button id="receipt-modal-close" class="secondary-button" type="button">Tutup</button>
       </div>
       <iframe id="receipt-modal-frame" class="receipt-modal-frame" title="Struk Pesanan"></iframe>
+    </div>
+  </div>
+
+  <!-- Modal Affiliate -->
+  <div id="affiliate-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2>Tambah Affiliate</h2>
+          <p class="muted">Buat kode referral baru untuk affiliate.</p>
+        </div>
+        <button id="close-affiliate-modal" class="icon-button" type="button">Tutup</button>
+      </div>
+      <form id="affiliate-form" class="form-grid">
+        <label>
+          Nama Affiliate
+          <input name="name" type="text" placeholder="Contoh: Budi Sudarsono" required />
+        </label>
+        <label>
+          Kode Referral
+          <input name="code" type="text" placeholder="Contoh: BUDI123" required />
+        </label>
+        <label class="full-width">
+          Komisi (%)
+          <input name="commission_rate" type="number" step="0.1" value="5.0" required />
+        </label>
+        <div class="full-width form-actions">
+          <button id="submit-affiliate-button" class="primary-button" type="submit">Simpan Affiliate</button>
+          <p id="affiliate-form-message" class="muted"></p>
+        </div>
+      </form>
     </div>
   </div>
 

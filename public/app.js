@@ -1,3 +1,13 @@
+// Referral Tracking
+const urlParams = new URLSearchParams(window.location.search);
+const refCode = urlParams.get("ref");
+if (refCode) {
+  localStorage.setItem("affiliateCode", refCode);
+  // Bersihkan URL agar terlihat rapi
+  const newUrl = window.location.pathname + (window.location.hash || "");
+  window.history.replaceState({}, document.title, newUrl);
+}
+
 const productGrid = document.getElementById("product-grid");
 const productTemplate = document.getElementById("product-card-template");
 const cartDrawer = document.getElementById("cart-drawer");
