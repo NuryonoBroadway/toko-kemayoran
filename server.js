@@ -12,18 +12,18 @@ const { promisify } = require("util");
 const app = express();
 const execFileAsync = promisify(execFile);
 const port = process.env.PORT || 3000;
-const adminToken = process.env.ADMIN_TOKEN || "tokoKemayoranJaya1234";
+const adminToken = requireEnv("ADMIN_TOKEN");
 const bankName = process.env.BANK_NAME || "BCA";
 const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER || "1234567890";
 const bankAccountHolder = process.env.BANK_ACCOUNT_HOLDER || "Toko Kemayoran";
 const sellerWhatsAppNumber = process.env.SELLER_WHATSAPP_NUMBER || "6281234567890";
 const binderbyteApiKey = process.env.BINDERBYTE_API_KEY || "";
-const binderbyteOrigin = process.env.BINDERBYTE_ORIGIN || "";
+const binderbyteOrigin = requireEnv("BINDERBYTE_ORIGIN");
 const binderbyteCouriers = String(process.env.BINDERBYTE_COURIERS || "jne,sicepat,pos,tiki,anteraja")
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
-const useApiCoIdKey = process.env.USE_API_CO_ID_KEY || "ZOSOWwmrGkROCwcDQrqnENd48qT9fMtoMW6uI9CM6o6FhdbDKE";
+const useApiCoIdKey = requireEnv("USE_API_CO_ID_KEY");
 const supabaseUrl = requireEnv("SUPABASE_URL").replace(/\/+$/, "");
 const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseRestUrl = `${supabaseUrl}/rest/v1`;
@@ -714,7 +714,7 @@ app.get("/api/affiliate/orders", requireAffiliate, asyncHandler(async (req, res)
     const affiliate = affiliateRows.find(a => a.code === order.affiliate_code);
     const rate = affiliate ? Number(affiliate.commission_rate || 0) : 0;
     const commission = Math.round((order.total || 0) * (rate / 100));
-    
+
     return {
       ...order,
       estimatedCommission: commission
@@ -739,7 +739,7 @@ app.get("/api/affiliate/payouts", requireAffiliate, asyncHandler(async (req, res
       affiliate_id: `in.("${ids.join('","')}")`,
       order: "paid_at.desc"
     }
-  }); 
+  });
 
   res.json(payouts);
 }));
