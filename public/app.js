@@ -105,7 +105,12 @@ function renderProducts() {
     card.querySelector(".category-text").textContent = product.category;
     card.querySelector(".category-badge").textContent = product.category;
     card.querySelector(".product-title").textContent = product.name;
-    card.querySelector(".description").textContent = product.description || "Tidak ada deskripsi.";
+    card.querySelector(".product-title").title = product.name;
+
+    const description = product.description || "Tidak ada deskripsi.";
+    const descriptionElement = card.querySelector(".description");
+    descriptionElement.textContent = description;
+    descriptionElement.title = description;
 
     product.variants.forEach((variant) => {
       const option = document.createElement("option");
@@ -121,7 +126,10 @@ function renderProducts() {
     variantSelect.addEventListener("change", () => {
       const nextVariant = findSelectedVariant(product, variantSelect.value);
       card.querySelector(".price").textContent = formatCurrency(nextVariant.price);
-      card.querySelector(".product-weight-chip").textContent = formatWeight(nextVariant.weightGrams);
+      const weightChip = card.querySelector(".product-weight-chip");
+      if (weightChip) {
+        weightChip.textContent = formatWeight(nextVariant.weightGrams);
+      }
       updateAllProductButtons();
     });
 

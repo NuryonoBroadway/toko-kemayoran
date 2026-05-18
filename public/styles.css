@@ -512,15 +512,14 @@ textarea {
 
 .product-title {
   font-family: Inter, sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--text);
-  line-height: 1.3;
+  line-height: 1.2;
   margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: block;
+  overflow: visible;
+  word-break: break-word;
 }
 
 .product-price-box {
@@ -548,13 +547,13 @@ textarea {
 .product-content .description {
   font-size: 13px;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.45;
   margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  height: 1.4em;
+  display: block;
+  overflow: visible;
+  min-height: 0;
+  max-height: none;
+  word-break: break-word;
 }
 
 .product-meta {
